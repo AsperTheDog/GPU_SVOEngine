@@ -1,0 +1,217 @@
+#include "engine.hpp"
+
+#include <array>
+#include <stdexcept>
+
+#include "logger.hpp"
+#include "VkBase/vulkan_context.hpp"
+
+VulkanGPU chooseCorrectGPU()
+{
+	const std::vector<VulkanGPU> gpus = VulkanContext::getGPUs();
+	for (auto& gpu : gpus)
+	{
+		if (gpu.getProperties().deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+		{
+			return gpu;
+		}
+	}
+
+	throw std::runtime_error("No discrete GPU found");
+}
+
+Engine::Engine() : m_window("Vulkan", 1920, 1080)
+{
+	Logger::setRootContext("Engine init");
+#ifndef _DEBUG
+	VulkanContext::init(VK_API_VERSION_1_3, false, m_window.getRequiredVulkanExtensions());
+#else
+	VulkanContext::init(VK_API_VERSION_1_3, true, m_window.getRequiredVulkanExtensions());
+#endif
+	m_window.createSurface();
+
+	const VulkanGPU gpu = chooseCorrectGPU();
+	const GPUQueueStructure queueStructure = gpu.getQueueFamilies();
+	QueueFamilySelector queueFamilySelector(queueStructure);
+
+	const QueueFamily graphicsQueueFamily = queueStructure.findQueueFamily(VK_QUEUE_GRAPHICS_BIT);
+	const QueueFamily presentQueueFamily = queueStructure.findPresentQueueFamily(m_window.getSurface());
+	const QueueFamily transferQueueFamily = queueStructure.findQueueFamily(VK_QUEUE_TRANSFER_BIT);
+
+	// Select Queue Families and assign queues
+	QueueFamilySelector selector{queueStructure};
+	selector.selectQueueFamily(graphicsQueueFamily, QueueFamilyTypeBits::GRAPHICS);
+	selector.selectQueueFamily(presentQueueFamily, QueueFamilyTypeBits::PRESENT);
+	m_graphicsQueuePos = selector.getOrAddQueue(graphicsQueueFamily, 1.0);
+	m_presentQueuePos = selector.getOrAddQueue(presentQueueFamily, 1.0);
+	QueueSelection transferQueuePos = selector.addQueue(transferQueueFamily, 1.0);
+
+	m_deviceID = VulkanContext::createDevice(gpu, selector, {VK_KHR_SWAPCHAIN_EXTENSION_NAME}, {});
+	VulkanDevice& device = VulkanContext::getDevice(m_deviceID);
+
+	m_window.createSwapchain(m_deviceID, {VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR});
+
+	device.configureOneTimeQueue(transferQueuePos);
+	m_graphicsCmdBufferID = device.createCommandBuffer(graphicsQueueFamily, 0, false);
+
+	createRenderPass();
+	createGraphicsPipeline();
+
+	device.configureStagingBuffer(5LL * 1024 * 1024, transferQueuePos);
+
+	m_framebuffers.resize(m_window.getImageCount());
+	for (uint32_t i = 0; i < m_window.getImageCount(); i++)
+		m_framebuffers[i] = createFramebuffer(m_window.getImageView(i));
+
+	// Create sync objects
+	m_imageAvailableSemaphoreID = device.createSemaphore();
+	m_renderFinishedSemaphoreID = device.createSemaphore();
+	m_inFlightFenceID = device.createFence(true);
+}
+
+Engine::~Engine()
+{
+	VulkanContext::getDevice(m_deviceID).waitIdle();
+
+	Logger::setRootContext("Resource cleanup");
+	m_window.free();
+	VulkanContext::free();
+}
+
+void Engine::run()
+{
+	VulkanDevice& device = VulkanContext::getDevice(m_deviceID);
+	VulkanFence& inFlightFence = device.getFence(m_inFlightFenceID);
+
+	const VulkanQueue graphicsQueue = device.getQueue(m_graphicsQueuePos);
+	const VulkanQueue presentQueue = device.getQueue(m_presentQueuePos);
+	const VulkanCommandBuffer& graphicsBuffer = device.getCommandBuffer(m_graphicsCmdBufferID, 0);
+
+	uint64_t frameCounter = 0;
+	Logger::setRootContext("Frame" + std::to_string(frameCounter));
+	while (!m_window.shouldClose())
+	{
+		m_window.pollEvents();
+		inFlightFence.wait();
+
+		if (m_window.getAndResetSwapchainRebuildFlag())
+		{
+			Logger::pushContext("Swapchain resources rebuild");
+			for (uint32_t i = 0; i < m_window.getImageCount(); i++)
+			{
+				device.freeFramebuffer(m_framebuffers[i]);
+				m_framebuffers[i] = createFramebuffer(m_window.getImageView(i));
+			}
+			Logger::popContext();
+		}
+
+		const uint32_t nextImage = m_window.acquireNextImage(m_imageAvailableSemaphoreID, nullptr);
+
+		inFlightFence.reset();
+
+		if (nextImage == UINT32_MAX)
+		{
+			frameCounter++;
+			continue;
+		}
+
+		recordCommandBuffer(m_framebuffers[nextImage]);
+
+		graphicsBuffer.submit(graphicsQueue, {{m_imageAvailableSemaphoreID, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT}}, {m_renderFinishedSemaphoreID}, m_inFlightFenceID);
+		m_window.present(presentQueue, nextImage, m_renderFinishedSemaphoreID);
+
+		frameCounter++;
+	}
+}
+
+void Engine::createRenderPass()
+{
+	Logger::pushContext("Create RenderPass");
+	VulkanRenderPassBuilder builder{};
+
+	const VkAttachmentDescription colorAttachment = VulkanRenderPassBuilder::createAttachment(m_window.getSwapchainImageFormat().format, 
+		VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, 
+		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+	builder.addAttachment(colorAttachment);
+
+	std::vector<VulkanRenderPassBuilder::AttachmentReference> colorSubpassRefs;
+	colorSubpassRefs.push_back({COLOR, 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
+	builder.addSubpass(VK_PIPELINE_BIND_POINT_GRAPHICS, colorSubpassRefs, 0);
+
+	m_renderPassID = VulkanContext::getDevice(m_deviceID).createRenderPass(builder, 0);
+	Logger::popContext();
+}
+
+void Engine::createGraphicsPipeline()
+{
+	Logger::pushContext("Create Pipeline");
+	const uint32_t layout = VulkanContext::getDevice(m_deviceID).createPipelineLayout({}, {});
+
+	const uint32_t vertexShader = VulkanContext::getDevice(m_deviceID).createShader("shaders/raytracing.vert", VK_SHADER_STAGE_VERTEX_BIT);
+	const uint32_t fragmentShader = VulkanContext::getDevice(m_deviceID).createShader("shaders/raytracing.frag", VK_SHADER_STAGE_FRAGMENT_BIT);
+
+	VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+	colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	colorBlendAttachment.blendEnable = VK_FALSE;
+
+	VulkanPipelineBuilder builder{&VulkanContext::getDevice(m_deviceID)};
+
+	builder.setInputAssemblyState(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_FALSE);
+	builder.setViewportState(1, 1);
+	builder.setRasterizationState(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE);
+	builder.setMultisampleState(VK_SAMPLE_COUNT_1_BIT, VK_FALSE, 1.0f);
+	builder.setDepthStencilState(VK_FALSE, VK_FALSE, VK_COMPARE_OP_ALWAYS);
+	builder.addColorBlendAttachment(colorBlendAttachment);
+	builder.setColorBlendState(VK_FALSE, VK_LOGIC_OP_COPY, {0.0f, 0.0f, 0.0f, 0.0f});
+	builder.setDynamicState({VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR});
+	builder.addShaderStage(vertexShader);
+	builder.addShaderStage(fragmentShader);
+	m_pipelineID = VulkanContext::getDevice(m_deviceID).createPipeline(builder, layout, m_renderPassID, 0);
+	Logger::popContext();
+}
+
+uint32_t Engine::createFramebuffer(const VkImageView colorAttachment) const
+{
+	const std::vector<VkImageView> attachments{colorAttachment};
+	const VkExtent2D extent = m_window.getSwapchainExtent();
+	return VulkanContext::getDevice(m_deviceID).createFramebuffer({extent.width, extent.height, 1}, VulkanContext::getDevice(m_deviceID).getRenderPass(m_renderPassID), attachments);
+}
+
+void Engine::recordCommandBuffer(const uint32_t framebufferID) const
+{
+	Logger::pushContext("Command buffer recording");
+
+	std::vector<VkClearValue> clearValues{2};
+    clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+    clearValues[1].depthStencil = {1.0f, 0};
+
+	VkViewport viewport;
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(m_window.getSwapchainExtent().width);
+    viewport.height = static_cast<float>(m_window.getSwapchainExtent().height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+	VkRect2D scissor;
+    scissor.offset = {0, 0};
+    scissor.extent = m_window.getSwapchainExtent();
+
+
+	VulkanCommandBuffer& graphicsBuffer = VulkanContext::getDevice(m_deviceID).getCommandBuffer(m_graphicsCmdBufferID, 0);
+	graphicsBuffer.reset();
+	graphicsBuffer.beginRecording();
+
+	graphicsBuffer.cmdBeginRenderPass(m_renderPassID, framebufferID, m_window.getSwapchainExtent(), clearValues);
+
+		graphicsBuffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineID);
+		graphicsBuffer.cmdSetViewport(viewport);
+		graphicsBuffer.cmdSetScissor(scissor);
+
+		graphicsBuffer.cmdDraw(6, 0);
+
+	graphicsBuffer.cmdEndRenderPass();
+	graphicsBuffer.endRecording();
+
+	Logger::popContext();
+}

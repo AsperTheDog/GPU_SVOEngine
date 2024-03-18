@@ -1,0 +1,11 @@
+[submodule "GPU_SVOEngine/vendor/tinyobjloader"]
+	path = GPU_SVOEngine/vendor/tinyobjloader
+	url = https://github.com/tinyobjloader/tinyobjloader
+[submodule "GPU_SVOEngine/vendor/imgui/remote"]
+	path = GPU_SVOEngine/vendor/imgui/remote
+	url = https://github.com/ocornut/imgui
+	branch = docking
+[submodule "ImGui/vendor/imgui"]
+	path = ImGui/vendor/imgui
+	url = https://github.com/ocornut/imgui
+	branch = docking

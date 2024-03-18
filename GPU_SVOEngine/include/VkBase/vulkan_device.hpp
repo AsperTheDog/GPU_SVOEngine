@@ -80,7 +80,7 @@ public:
 	uint32_t createSemaphore();
 	VulkanSemaphore& getSemaphore(uint32_t id);
 	void freeSemaphore(uint32_t id);
-	void freeSemaphore(VulkanSemaphore& semaphore);
+	void freeSemaphore(const VulkanSemaphore& semaphore);
 
 	uint32_t createFence(bool signaled);
 	VulkanFence& getFence(uint32_t id);

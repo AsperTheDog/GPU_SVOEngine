@@ -88,6 +88,11 @@ Engine::~Engine()
 	VulkanContext::free();
 }
 
+void Engine::configureOctreeBuffer(Octree& octree)
+{
+
+}
+
 void Engine::run()
 {
 	VulkanDevice& device = VulkanContext::getDevice(m_deviceID);
@@ -169,9 +174,7 @@ void Engine::createRenderPass()
 		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 	builder.addAttachment(colorAttachment);
 
-	std::vector<VulkanRenderPassBuilder::AttachmentReference> colorSubpassRefs;
-	colorSubpassRefs.push_back({COLOR, 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
-	builder.addSubpass(VK_PIPELINE_BIND_POINT_GRAPHICS, colorSubpassRefs, 0);
+	builder.addSubpass(VK_PIPELINE_BIND_POINT_GRAPHICS, {{COLOR, 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL}}, 0);
 
 	m_renderPassID = VulkanContext::getDevice(m_deviceID).createRenderPass(builder, 0);
 	Logger::popContext();

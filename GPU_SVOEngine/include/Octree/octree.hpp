@@ -2,12 +2,14 @@
 #include <cstdint>
 #include <vector>
 
+#include <glm/glm.hpp>
+
 // Helper classes
 
 class NearPtr
 {
 public:
-	explicit NearPtr(uint16_t ptr);
+	explicit NearPtr(uint16_t ptr, bool isFar);
 
 	[[nodiscard]] uint16_t getPtr() const;
 	[[nodiscard]] bool isFar() const;
@@ -30,15 +32,39 @@ private:
 
 // Octree classes
 
-struct OctreeNode
+union OctreeNode
 {
-	NearPtr ptr;
-	BitField childMask;
-	BitField leafMask;
+	OctreeNode();
+
+	struct {
+		NearPtr ptr;
+		BitField childMask{0};
+		BitField leafMask{0};
+	} branch;
+
+	struct {
+		uint8_t material;
+		glm::u8vec3 color;
+	} leaf;
+
+	struct {
+		uint32_t ptr;
+	} far;
 };
 
 class Octree
 {
+public:
+	[[nodiscard]] size_t getSize() const;
+	[[nodiscard]] size_t getByteSize() const;
+	[[nodiscard]] OctreeNode& operator[](size_t index);
+	[[nodiscard]] const OctreeNode& operator[](size_t index) const;
+
+	void populateSample(uint8_t depth);
+	void addChild(OctreeNode child);
+
+private:
 	std::vector<OctreeNode> data;
+	uint8_t depth = 0;
 };
 

@@ -650,7 +650,7 @@ void VulkanDevice::freeSemaphore(uint32_t id)
 	}
 }
 
-void VulkanDevice::freeSemaphore(VulkanSemaphore& semaphore)
+void VulkanDevice::freeSemaphore(const VulkanSemaphore& semaphore)
 {
 	freeSemaphore(semaphore.m_id);
 }

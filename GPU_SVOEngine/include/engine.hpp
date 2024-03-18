@@ -3,11 +3,15 @@
 #include "VkBase/sdl_window.hpp"
 #include "VkBase/vulkan_queues.hpp"
 
+class Octree;
+
 class Engine
 {
 public:
 	Engine();
 	~Engine();
+
+	void configureOctreeBuffer(Octree& octree);
 
 	void run();
 
@@ -17,7 +21,7 @@ private:
 	uint32_t createFramebuffer(VkImageView colorAttachment) const;
 	void initImgui() const;
 
-	void recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_draw_data) const;
+	void recordCommandBuffer(uint32_t framebufferID, ImDrawData* main_draw_data) const;
 
 	void drawImgui() const;
 

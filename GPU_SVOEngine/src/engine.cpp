@@ -197,7 +197,6 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID) const
     scissor.offset = {0, 0};
     scissor.extent = m_window.getSwapchainExtent();
 
-
 	VulkanCommandBuffer& graphicsBuffer = VulkanContext::getDevice(m_deviceID).getCommandBuffer(m_graphicsCmdBufferID, 0);
 	graphicsBuffer.reset();
 	graphicsBuffer.beginRecording();

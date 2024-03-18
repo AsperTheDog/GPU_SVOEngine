@@ -72,7 +72,7 @@ public:
 	void freePipeline(uint32_t id);
 	void freePipeline(const VulkanPipeline& pipeline);
 
-	uint32_t createDescriptorPool(const std::vector<VkDescriptorPoolSize>& poolSizes, uint32_t maxSets);
+	uint32_t createDescriptorPool(const std::vector<VkDescriptorPoolSize>& poolSizes, const uint32_t maxSets, const VkDescriptorPoolCreateFlags flags);
 	VulkanDescriptorPool& getDescriptorPool(uint32_t id);
 	void freeDescriptorPool(uint32_t id);
 	void freeDescriptorPool(const VulkanDescriptorPool& descriptorPool);

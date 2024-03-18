@@ -245,7 +245,7 @@ void Engine::initImgui() const
 			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
 			{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
 		};
-	const uint32_t imguiPoolID = device.createDescriptorPool(pool_sizes, 1000 * pool_sizes.size());
+	const uint32_t imguiPoolID = device.createDescriptorPool(pool_sizes, 1000 * pool_sizes.size(), VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT);
 
     m_window.initImgui();
     ImGui_ImplVulkan_InitInfo init_info = {};

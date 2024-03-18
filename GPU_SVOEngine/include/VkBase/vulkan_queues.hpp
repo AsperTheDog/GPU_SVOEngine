@@ -59,6 +59,8 @@ class VulkanQueue
 public:
 	void waitIdle() const;
 
+	VkQueue operator*() const;
+
 private:
 	explicit VulkanQueue(VkQueue queue);
 

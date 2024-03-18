@@ -88,6 +88,11 @@ void VulkanQueue::waitIdle() const
 	vkQueueWaitIdle(m_vkHandle);
 }
 
+VkQueue VulkanQueue::operator*() const
+{
+	return m_vkHandle;
+}
+
 VulkanQueue::VulkanQueue(const VkQueue queue)
 	: m_vkHandle(queue)
 {

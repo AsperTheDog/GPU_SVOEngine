@@ -41,6 +41,8 @@ public:
 	void cmdDraw(uint32_t vertexCount, uint32_t firstVertex) const;
 	void cmdDrawIndexed(uint32_t indexCount, uint32_t firstIndex, int32_t vertexOffset) const;
 
+	VkCommandBuffer operator*() const;
+
 private:
 	VulkanCommandBuffer(uint32_t device, VkCommandBuffer commandBuffer, bool isSecondary, uint32_t familyIndex, uint32_t threadID);
 

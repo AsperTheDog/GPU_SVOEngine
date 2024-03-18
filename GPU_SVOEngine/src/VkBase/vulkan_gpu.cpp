@@ -101,6 +101,11 @@ VkFormat VulkanGPU::findSupportedFormat(const std::vector<VkFormat>& candidates,
 	throw std::runtime_error("Failed to find supported format");
 }
 
+VkPhysicalDevice VulkanGPU::operator*() const
+{
+	return m_vkHandle;
+}
+
 VulkanGPU::VulkanGPU(const VkPhysicalDevice physicalDevice)
 	: m_vkHandle(physicalDevice)
 {

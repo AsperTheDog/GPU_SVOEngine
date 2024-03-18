@@ -74,6 +74,11 @@ VkAttachmentDescription VulkanRenderPassBuilder::createAttachment(const VkFormat
 	return attachment;
 }
 
+VkRenderPass VulkanRenderPass::operator*() const
+{
+	return m_vkHandle;
+}
+
 void VulkanRenderPass::free()
 {
 	Logger::print("Freeing render pass" + std::to_string(m_id));

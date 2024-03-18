@@ -3,7 +3,10 @@
 #include <array>
 #include <stdexcept>
 
+#include <imgui.h>
+
 #include "logger.hpp"
+#include "backends/imgui_impl_vulkan.h"
 #include "VkBase/vulkan_context.hpp"
 
 VulkanGPU chooseCorrectGPU()
@@ -67,6 +70,8 @@ Engine::Engine() : m_window("Vulkan", 1920, 1080)
 	m_imageAvailableSemaphoreID = device.createSemaphore();
 	m_renderFinishedSemaphoreID = device.createSemaphore();
 	m_inFlightFenceID = device.createFence(true);
+
+	initImgui();
 }
 
 Engine::~Engine()
@@ -74,6 +79,11 @@ Engine::~Engine()
 	VulkanContext::getDevice(m_deviceID).waitIdle();
 
 	Logger::setRootContext("Resource cleanup");
+
+	ImGui_ImplVulkan_Shutdown();
+	m_window.shutdownImgui();
+    ImGui::DestroyContext();
+
 	m_window.free();
 	VulkanContext::free();
 }
@@ -89,6 +99,9 @@ void Engine::run()
 
 	uint64_t frameCounter = 0;
 	Logger::setRootContext("Frame" + std::to_string(frameCounter));
+
+	bool show_demo_window = true;
+
 	while (!m_window.shouldClose())
 	{
 		m_window.pollEvents();
@@ -115,9 +128,31 @@ void Engine::run()
 			continue;
 		}
 
-		recordCommandBuffer(m_framebuffers[nextImage]);
+		ImGui_ImplVulkan_NewFrame();
+	    m_window.frameImgui();
+	    ImGui::NewFrame();
+
+		ImGui::ShowDemoWindow(&show_demo_window);
+
+		ImGui::Render();
+		ImDrawData* main_draw_data = ImGui::GetDrawData();
+		const bool main_is_minimized = (main_draw_data->DisplaySize.x <= 0.0f || main_draw_data->DisplaySize.y <= 0.0f);
+
+		if (main_is_minimized)
+		{
+			ImGui::UpdatePlatformWindows();
+			ImGui::RenderPlatformWindowsDefault();
+			continue;
+		}
+
+		recordCommandBuffer(m_framebuffers[nextImage], main_draw_data);
 
 		graphicsBuffer.submit(graphicsQueue, {{m_imageAvailableSemaphoreID, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT}}, {m_renderFinishedSemaphoreID}, m_inFlightFenceID);
+
+
+		ImGui::UpdatePlatformWindows();
+		ImGui::RenderPlatformWindowsDefault();
+
 		m_window.present(presentQueue, nextImage, m_renderFinishedSemaphoreID);
 
 		frameCounter++;
@@ -177,7 +212,58 @@ uint32_t Engine::createFramebuffer(const VkImageView colorAttachment) const
 	return VulkanContext::getDevice(m_deviceID).createFramebuffer({extent.width, extent.height, 1}, VulkanContext::getDevice(m_deviceID).getRenderPass(m_renderPassID), attachments);
 }
 
-void Engine::recordCommandBuffer(const uint32_t framebufferID) const
+void Engine::initImgui() const
+{
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+	io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+
+	ImGui::StyleColorsDark();
+	ImGuiStyle& style = ImGui::GetStyle();
+    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+    {
+        style.WindowRounding = 0.0f;
+        style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+    }
+
+	VulkanDevice& device = VulkanContext::getDevice(m_deviceID);
+
+	const std::vector<VkDescriptorPoolSize> pool_sizes =
+		{
+			{ VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+			{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+			{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
+		};
+	const uint32_t imguiPoolID = device.createDescriptorPool(pool_sizes, 1000 * pool_sizes.size());
+
+    m_window.initImgui();
+    ImGui_ImplVulkan_InitInfo init_info = {};
+    init_info.Instance = VulkanContext::getHandle();
+    init_info.PhysicalDevice = *device.getGPU();
+    init_info.Device = *device;
+    init_info.QueueFamily = m_graphicsQueuePos.familyIndex;
+    init_info.Queue = *device.getQueue(m_graphicsQueuePos);
+    init_info.DescriptorPool = *device.getDescriptorPool(imguiPoolID);
+    init_info.RenderPass = *device.getRenderPass(m_renderPassID);
+    init_info.Subpass = 0;
+    init_info.MinImageCount = m_window.getMinImageCount();
+    init_info.ImageCount = m_window.getImageCount();
+    init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+    ImGui_ImplVulkan_Init(&init_info);
+}
+
+void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_draw_data) const
 {
 	Logger::pushContext("Command buffer recording");
 
@@ -209,8 +295,15 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID) const
 
 		graphicsBuffer.cmdDraw(6, 0);
 
+		ImGui_ImplVulkan_RenderDrawData(main_draw_data, *graphicsBuffer);
+
 	graphicsBuffer.cmdEndRenderPass();
 	graphicsBuffer.endRecording();
 
 	Logger::popContext();
+}
+
+void Engine::drawImgui() const
+{
+	ImGui::ShowDemoWindow();
 }

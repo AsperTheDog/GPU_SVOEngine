@@ -3,6 +3,11 @@
 #include "VkBase/vulkan_context.hpp"
 #include "VkBase/vulkan_device.hpp"
 
+VkFramebuffer VulkanFramebuffer::operator*() const
+{
+	return m_vkHandle;
+}
+
 void VulkanFramebuffer::free()
 {
 	if (m_vkHandle != VK_NULL_HANDLE)

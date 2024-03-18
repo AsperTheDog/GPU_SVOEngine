@@ -13,6 +13,8 @@ class VulkanShader : public VulkanBase
 public:
 	static [[nodiscard]] shaderc_shader_kind getKindFromStage(VkShaderStageFlagBits stage);
 
+	VkShaderModule operator*() const;
+
 private:
 	void free();
 

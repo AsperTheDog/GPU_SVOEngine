@@ -35,6 +35,11 @@ VkExtent3D VulkanImage::getSize() const
 	return m_size;
 }
 
+VkImage VulkanImage::operator*() const
+{
+	return m_vkHandle;
+}
+
 VkImageView VulkanImage::createImageView(const VkFormat format, const VkImageAspectFlags aspectFlags)
 {
 	VkImageViewType type = VK_IMAGE_VIEW_TYPE_MAX_ENUM;

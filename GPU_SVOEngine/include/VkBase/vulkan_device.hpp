@@ -15,6 +15,7 @@
 #include "vulkan_pipeline.hpp"
 #include "vulkan_shader.hpp"
 #include "vulkan_command_buffer.hpp"
+#include "vulkan_descriptors.hpp"
 
 
 class VulkanDevice : public VulkanBase
@@ -71,6 +72,11 @@ public:
 	void freePipeline(uint32_t id);
 	void freePipeline(const VulkanPipeline& pipeline);
 
+	uint32_t createDescriptorPool(const std::vector<VkDescriptorPoolSize>& poolSizes, uint32_t maxSets);
+	VulkanDescriptorPool& getDescriptorPool(uint32_t id);
+	void freeDescriptorPool(uint32_t id);
+	void freeDescriptorPool(const VulkanDescriptorPool& descriptorPool);
+
 	uint32_t createSemaphore();
 	VulkanSemaphore& getSemaphore(uint32_t id);
 	void freeSemaphore(uint32_t id);
@@ -93,6 +99,8 @@ public:
 	[[nodiscard]] VulkanGPU getGPU() const;
 	[[nodiscard]] const VulkanMemoryAllocator& getMemoryAllocator() const;
 	[[nodiscard]] uint32_t getStagingBufferSemaphore() const;
+
+	VkDevice operator*() const;
 
 private:
 	void free();
@@ -131,6 +139,7 @@ private:
 	std::vector<VulkanPipelineLayout> m_pipelineLayouts;
 	std::vector<VulkanShader> m_shaders;
 	std::vector<VulkanPipeline> m_pipelines;
+	std::vector<VulkanDescriptorPool> m_descriptorPools;
 	std::vector<VulkanImage> m_images;
 	std::vector<VulkanSemaphore> m_semaphores;
 	std::vector<VulkanFence> m_fences;
@@ -154,4 +163,5 @@ private:
 	friend class VulkanPipelineLayout;
 	friend class VulkanFramebuffer;
 	friend class VulkanShader;
+	friend class VulkanDescriptorPool;
 };

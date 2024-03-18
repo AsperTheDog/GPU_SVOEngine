@@ -22,6 +22,8 @@ public:
 
 	[[nodiscard]] VkExtent3D getSize() const;
 
+	VkImage operator*() const;
+
 private:
 	void free();
 

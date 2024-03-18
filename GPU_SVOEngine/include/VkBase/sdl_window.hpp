@@ -25,6 +25,8 @@ public:
 	SDLWindow() = default;
 	SDLWindow(std::string_view name, int width, int height, int top = SDL_WINDOWPOS_CENTERED, int left = SDL_WINDOWPOS_CENTERED, uint32_t flags = SDL_WINDOW_SHOWN | SDL_WINDOW_MAXIMIZED | SDL_WINDOW_RESIZABLE);
 
+	void initImgui() const;
+
 	[[nodiscard]] bool shouldClose() const;
 	[[nodiscard]] std::vector<const char*> getRequiredVulkanExtensions() const;
 	[[nodiscard]] WindowSize getSize() const;
@@ -41,12 +43,16 @@ public:
 	[[nodiscard]] bool getAndResetSwapchainRebuildFlag();
 	[[nodiscard]] VkImageView getImageView(uint32_t index) const;
 	[[nodiscard]] uint32_t getImageCount() const;
+	[[nodiscard]] uint32_t getMinImageCount() const;
 
 	SDL_Window* operator*() const;
 	[[nodiscard]] VkSurfaceKHR getSurface() const;
 
 	void free();
+	void shutdownImgui() const;
+
 	void present(const VulkanQueue& queue, uint32_t imageIndex, uint32_t waitSemaphore = UINT32_MAX) const;
+	void frameImgui() const;
 
 private:
 	struct Swapchain
@@ -56,6 +62,7 @@ private:
 		VkSurfaceFormatKHR format;
 		std::vector<VkImage> images;
 		std::vector<VkImageView> imageViews;
+		uint32_t minImageCount = 0;
 		bool rebuilt = false;
 	};
 

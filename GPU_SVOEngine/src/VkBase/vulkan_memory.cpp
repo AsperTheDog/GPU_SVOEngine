@@ -161,6 +161,11 @@ void MemoryChunk::deallocate(const MemoryBlock& block)
 	defragment();
 }
 
+VkDeviceMemory MemoryChunk::operator*() const
+{
+	return m_memory;
+}
+
 VkDeviceSize MemoryChunk::getBiggestChunkSize() const
 {
 	return m_unallocatedData.empty() ? 0 : m_unallocatedData.at(m_biggestChunk);

@@ -28,6 +28,11 @@ uint32_t VulkanDevice::getStagingBufferSemaphore() const
 	return m_stagingSemaphore;
 }
 
+VkDevice VulkanDevice::operator*() const
+{
+	return m_vkHandle;
+}
+
 void VulkanDevice::configureOneTimeQueue(const QueueSelection queue)
 {
 	m_oneTimeQueue = queue;
@@ -571,6 +576,54 @@ void VulkanDevice::freePipeline(const VulkanPipeline& pipeline)
 	freePipeline(pipeline.m_id);
 }
 
+uint32_t VulkanDevice::createDescriptorPool(const std::vector<VkDescriptorPoolSize>& poolSizes, const uint32_t maxSets)
+{
+	VkDescriptorPoolCreateInfo poolInfo{};
+	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+	poolInfo.pPoolSizes = poolSizes.data();
+	poolInfo.maxSets = maxSets;
+
+	VkDescriptorPool descriptorPool;
+	if (vkCreateDescriptorPool(m_vkHandle, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS)
+	{
+				throw std::runtime_error("Failed to create descriptor pool");
+	}
+
+	m_descriptorPools.push_back({m_id, descriptorPool});
+	return m_descriptorPools.back().getID();
+}
+
+VulkanDescriptorPool& VulkanDevice::getDescriptorPool(const uint32_t id)
+{
+	for (VulkanDescriptorPool& descriptorPool : m_descriptorPools)
+	{
+		if (descriptorPool.getID() == id)
+		{
+			return descriptorPool;
+		}
+	}
+	throw std::runtime_error("Descriptor pool not found");
+}
+
+void VulkanDevice::freeDescriptorPool(const uint32_t id)
+{
+	for (auto it = m_descriptorPools.begin(); it != m_descriptorPools.end(); ++it)
+	{
+		if (it->getID() == id)
+		{
+			it->free();
+			m_descriptorPools.erase(it);
+			break;
+		}
+	}
+}
+
+void VulkanDevice::freeDescriptorPool(const VulkanDescriptorPool& descriptorPool)
+{
+	freeDescriptorPool(descriptorPool.getID());
+}
+
 VulkanSemaphore& VulkanDevice::getSemaphore(const uint32_t id)
 {
 	for (VulkanSemaphore& semaphore : m_semaphores)
@@ -812,6 +865,10 @@ void VulkanDevice::free()
 	for (VulkanPipeline& pipeline : m_pipelines)
 		pipeline.free();
 	m_pipelines.clear();
+
+	for (VulkanDescriptorPool& descriptorPool : m_descriptorPools)
+		descriptorPool.free();
+	m_descriptorPools.clear();
 
 	for (VulkanSemaphore& semaphore : m_semaphores)
 		semaphore.free();

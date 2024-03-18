@@ -21,6 +21,8 @@ public:
 
 	static void free();
 
+	static VkInstance getHandle();
+
 private:
 	inline static VkInstance m_vkHandle = VK_NULL_HANDLE;
 	inline static bool m_validationLayersEnabled = false;

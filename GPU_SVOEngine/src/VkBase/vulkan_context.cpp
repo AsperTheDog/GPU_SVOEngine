@@ -153,3 +153,8 @@ void VulkanContext::free()
 	vkDestroyInstance(m_vkHandle, nullptr);
 	m_vkHandle = VK_NULL_HANDLE;
 }
+
+VkInstance VulkanContext::getHandle()
+{
+	return m_vkHandle;
+}

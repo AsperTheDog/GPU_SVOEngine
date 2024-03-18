@@ -21,6 +21,8 @@ public:
 	[[nodiscard]] void* getMappedData() const;
 	[[nodiscard]] VkDeviceSize getSize() const;
 
+	VkBuffer operator*() const;
+
 private:
 	void free();
 

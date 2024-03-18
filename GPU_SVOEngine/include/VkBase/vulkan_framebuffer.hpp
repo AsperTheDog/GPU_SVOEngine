@@ -7,6 +7,7 @@ class VulkanDevice;
 class VulkanFramebuffer : public VulkanBase
 {
 public:
+	VkFramebuffer operator*() const;
 
 private:
 	void free();

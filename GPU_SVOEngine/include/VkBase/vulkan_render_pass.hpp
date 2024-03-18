@@ -55,6 +55,7 @@ private:
 class VulkanRenderPass : public VulkanBase
 {
 public:
+	VkRenderPass operator*() const;
 
 private:
 	void free();

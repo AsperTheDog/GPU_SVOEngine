@@ -28,6 +28,11 @@ shaderc_shader_kind VulkanShader::getKindFromStage(const VkShaderStageFlagBits s
 	}
 }
 
+VkShaderModule VulkanShader::operator*() const
+{
+	return m_vkHandle;
+}
+
 void VulkanShader::free()
 {
 	if (m_vkHandle != VK_NULL_HANDLE)

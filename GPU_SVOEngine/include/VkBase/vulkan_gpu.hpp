@@ -23,6 +23,8 @@ public:
 	[[nodiscard]] VkFormatProperties getFormatProperties(VkFormat format) const;
 	[[nodiscard]] VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, const VkImageTiling tiling, const VkFormatFeatureFlags features) const;
 
+	VkPhysicalDevice operator*() const;
+
 private:
 	explicit VulkanGPU(VkPhysicalDevice physicalDevice);
 

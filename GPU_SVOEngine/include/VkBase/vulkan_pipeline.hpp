@@ -80,6 +80,8 @@ public:
 	[[nodiscard]] uint32_t getRenderPass() const;
 	[[nodiscard]] uint32_t getSubpass() const;
 
+	VkPipeline operator*() const;
+
 private:
 	void free();
 
@@ -100,6 +102,9 @@ private:
 
 class VulkanPipelineLayout : public VulkanBase
 {
+public:
+	VkPipelineLayout operator*() const;
+
 private:
 	void free();
 

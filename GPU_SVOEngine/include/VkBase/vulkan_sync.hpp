@@ -14,6 +14,8 @@ public:
 
 	[[nodiscard]] bool isSignaled() const;
 
+	VkFence operator*() const;
+
 private:
 	void free();
 
@@ -33,6 +35,7 @@ private:
 class VulkanSemaphore : public VulkanBase
 {
 public:
+	VkSemaphore operator*() const;
 
 private:
 	void free();

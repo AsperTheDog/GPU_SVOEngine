@@ -49,6 +49,8 @@ public:
 	MemoryBlock allocate(VkDeviceSize newSize, VkDeviceSize alignment);
 	void deallocate(const MemoryBlock& block);
 
+	VkDeviceMemory operator*() const;
+
 private:
 	MemoryChunk(VkDeviceSize size, uint32_t memoryType, VkDeviceMemory vkHandle);
 

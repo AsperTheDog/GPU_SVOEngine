@@ -255,9 +255,19 @@ uint32_t VulkanPipeline::getSubpass() const
 	return m_subpass;
 }
 
+VkPipeline VulkanPipeline::operator*() const
+{
+	return m_vkHandle;
+}
+
 VulkanPipeline::VulkanPipeline(VulkanDevice& device, const VkPipeline handle, const uint32_t layout, const uint32_t renderPass, const uint32_t subpass)
 	: m_vkHandle(handle), m_layout(layout), m_renderPass(renderPass), m_subpass(subpass), m_device(&device)
 {
+}
+
+VkPipelineLayout VulkanPipelineLayout::operator*() const
+{
+	return m_vkHandle;
 }
 
 void VulkanPipelineLayout::free()

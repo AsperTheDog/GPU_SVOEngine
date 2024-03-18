@@ -5,6 +5,7 @@
 #include <SDL2/SDL.h>
 
 #include "logger.hpp"
+#include "backends/imgui_impl_sdl2.h"
 #include "VkBase/vulkan_context.hpp"
 #include "VkBase/vulkan_device.hpp"
 #include "VkBase/vulkan_sync.hpp"
@@ -30,6 +31,11 @@ SDLWindow::SDLWindow(const std::string_view name, const int width, const int hei
 {
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
 	m_SDLHandle = SDL_CreateWindow(name.data(), top, left, width, height, flags | SDL_WINDOW_VULKAN);
+}
+
+void SDLWindow::initImgui() const
+{
+	ImGui_ImplSDL2_InitForVulkan(m_SDLHandle);
 }
 
 bool SDLWindow::shouldClose() const
@@ -70,6 +76,7 @@ void SDLWindow::pollEvents()
 	SDL_Event event;
 	while (SDL_PollEvent(&event))
 	{
+		ImGui_ImplSDL2_ProcessEvent(&event);
 		switch (event.type)
 		{
 		case SDL_WINDOWEVENT:
@@ -141,6 +148,11 @@ uint32_t SDLWindow::getImageCount() const
 	return static_cast<uint32_t>(m_swapchain.images.size());
 }
 
+uint32_t SDLWindow::getMinImageCount() const
+{
+	return m_swapchain.minImageCount;
+}
+
 SDL_Window* SDLWindow::operator*() const
 {
 	return m_SDLHandle;
@@ -167,6 +179,11 @@ void SDLWindow::free()
 	m_SDLHandle = nullptr;
 }
 
+void SDLWindow::shutdownImgui() const
+{
+	ImGui_ImplSDL2_Shutdown();
+}
+
 void SDLWindow::present(const VulkanQueue& queue, const uint32_t imageIndex, const uint32_t waitSemaphore) const
 {
 	VkPresentInfoKHR presentInfo{};
@@ -183,6 +200,11 @@ void SDLWindow::present(const VulkanQueue& queue, const uint32_t imageIndex, con
 	{
 		throw std::runtime_error("failed to present swap chain image!");
 	}
+}
+
+void SDLWindow::frameImgui() const
+{
+	ImGui_ImplSDL2_NewFrame();
 }
 
 void SDLWindow::freeSwapchain()
@@ -244,6 +266,7 @@ void SDLWindow::_createSwapchain(const uint32_t deviceID, const VkExtent2D size,
 
 	m_swapchain.format = format;
 	m_swapchain.extent = createInfo.imageExtent;
+	m_swapchain.minImageCount = createInfo.minImageCount;
 
 	// Get images
 	uint32_t imageCount;

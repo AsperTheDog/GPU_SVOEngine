@@ -44,6 +44,11 @@ VkDeviceSize VulkanBuffer::getSize() const
 	return m_size;
 }
 
+VkBuffer VulkanBuffer::operator*() const
+{
+	return m_vkHandle;
+}
+
 void* VulkanBuffer::map(const VkDeviceSize size, const VkDeviceSize offset)
 {
 	void* data;

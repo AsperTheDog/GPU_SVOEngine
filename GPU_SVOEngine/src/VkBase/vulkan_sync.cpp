@@ -26,9 +26,19 @@ bool VulkanFence::isSignaled() const
 	return m_isSignaled;
 }
 
+VkFence VulkanFence::operator*() const
+{
+	return m_vkHandle;
+}
+
 VulkanFence::VulkanFence(const uint32_t device, const VkFence fence, const bool isSignaled)
 	: m_vkHandle(fence), m_isSignaled(isSignaled), m_device(device)
 {
+}
+
+VkSemaphore VulkanSemaphore::operator*() const
+{
+	return m_vkHandle;
 }
 
 void VulkanSemaphore::free()

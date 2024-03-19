@@ -77,7 +77,7 @@ Engine::Engine() : cam({0, 0, 0}, {0, 0, 0}), m_window("Vulkan", 1920, 1080)
 
 	{
 		cam.setScreenSize(m_window.getSize().width, m_window.getSize().height);
-		cam.setPosition({0.0f, 0.0f, -3.0f});
+		cam.setPosition({0.0f, 0.0f, -9.0f});
 		cam.lookAt({0.0f, 0.0f, 0.0f});
 	}
 }
@@ -320,5 +320,5 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
 
 void Engine::drawImgui() const
 {
-	//ImGui::ShowDemoWindow();
+	ImGui::ShowDemoWindow();
 }

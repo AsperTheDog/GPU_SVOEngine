@@ -1,4 +1,5 @@
 #pragma once
+#include "camera.hpp"
 #include "imgui.h"
 #include "VkBase/sdl_window.hpp"
 #include "VkBase/vulkan_queues.hpp"
@@ -21,9 +22,11 @@ private:
 	uint32_t createFramebuffer(VkImageView colorAttachment) const;
 	void initImgui() const;
 
-	void recordCommandBuffer(uint32_t framebufferID, ImDrawData* main_draw_data) const;
+	void recordCommandBuffer(uint32_t framebufferID, ImDrawData* main_draw_data);
 
 	void drawImgui() const;
+
+	Camera cam;
 
 	SDLWindow m_window;
 

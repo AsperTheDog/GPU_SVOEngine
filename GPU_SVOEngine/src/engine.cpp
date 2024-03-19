@@ -4,6 +4,8 @@
 #include <stdexcept>
 
 #include <imgui.h>
+#include <glm/mat4x4.hpp>
+#include <glm/vec3.hpp>
 
 #include "logger.hpp"
 #include "backends/imgui_impl_vulkan.h"
@@ -23,7 +25,7 @@ VulkanGPU chooseCorrectGPU()
 	throw std::runtime_error("No discrete GPU found");
 }
 
-Engine::Engine() : m_window("Vulkan", 1920, 1080)
+Engine::Engine() : cam({0, 0, 0}, {0, 0, 0}), m_window("Vulkan", 1920, 1080)
 {
 	Logger::setRootContext("Engine init");
 #ifndef _DEBUG
@@ -72,6 +74,12 @@ Engine::Engine() : m_window("Vulkan", 1920, 1080)
 	m_inFlightFenceID = device.createFence(true);
 
 	initImgui();
+
+	{
+		cam.setScreenSize(m_window.getSize().width, m_window.getSize().height);
+		cam.setPosition({0.0f, 0.0f, -3.0f});
+		cam.lookAt({0.0f, 0.0f, 0.0f});
+	}
 }
 
 Engine::~Engine()
@@ -105,8 +113,6 @@ void Engine::run()
 	uint64_t frameCounter = 0;
 	Logger::setRootContext("Frame" + std::to_string(frameCounter));
 
-	bool show_demo_window = true;
-
 	while (!m_window.shouldClose())
 	{
 		m_window.pollEvents();
@@ -137,20 +143,19 @@ void Engine::run()
 	    m_window.frameImgui();
 	    ImGui::NewFrame();
 
-		ImGui::ShowDemoWindow(&show_demo_window);
+		Engine::drawImgui();
 
 		ImGui::Render();
-		ImDrawData* main_draw_data = ImGui::GetDrawData();
-		const bool main_is_minimized = (main_draw_data->DisplaySize.x <= 0.0f || main_draw_data->DisplaySize.y <= 0.0f);
+		ImDrawData* imguiDrawData = ImGui::GetDrawData();
 
-		if (main_is_minimized)
+		if (imguiDrawData->DisplaySize.x <= 0.0f || imguiDrawData->DisplaySize.y <= 0.0f)
 		{
 			ImGui::UpdatePlatformWindows();
 			ImGui::RenderPlatformWindowsDefault();
 			continue;
 		}
 
-		recordCommandBuffer(m_framebuffers[nextImage], main_draw_data);
+		recordCommandBuffer(m_framebuffers[nextImage], imguiDrawData);
 
 		graphicsBuffer.submit(graphicsQueue, {{m_imageAvailableSemaphoreID, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT}}, {m_renderFinishedSemaphoreID}, m_inFlightFenceID);
 
@@ -183,7 +188,9 @@ void Engine::createRenderPass()
 void Engine::createGraphicsPipeline()
 {
 	Logger::pushContext("Create Pipeline");
-	const uint32_t layout = VulkanContext::getDevice(m_deviceID).createPipelineLayout({}, {});
+	std::vector<VkPushConstantRange> pushConstants{1};
+	pushConstants[0] = {VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(glm::vec4) + sizeof(glm::mat4)};
+	const uint32_t layout = VulkanContext::getDevice(m_deviceID).createPipelineLayout({}, pushConstants);
 
 	const uint32_t vertexShader = VulkanContext::getDevice(m_deviceID).createShader("shaders/raytracing.vert", VK_SHADER_STAGE_VERTEX_BIT);
 	const uint32_t fragmentShader = VulkanContext::getDevice(m_deviceID).createShader("shaders/raytracing.frag", VK_SHADER_STAGE_FRAGMENT_BIT);
@@ -266,7 +273,7 @@ void Engine::initImgui() const
     ImGui_ImplVulkan_Init(&init_info);
 }
 
-void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_draw_data) const
+void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_draw_data)
 {
 	Logger::pushContext("Command buffer recording");
 
@@ -286,6 +293,10 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
     scissor.offset = {0, 0};
     scissor.extent = m_window.getSwapchainExtent();
 
+	const uint32_t layout = VulkanContext::getDevice(m_deviceID).getPipeline(m_pipelineID).getLayout();
+
+	const Camera::Data camData = cam.getData();
+
 	VulkanCommandBuffer& graphicsBuffer = VulkanContext::getDevice(m_deviceID).getCommandBuffer(m_graphicsCmdBufferID, 0);
 	graphicsBuffer.reset();
 	graphicsBuffer.beginRecording();
@@ -296,6 +307,7 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
 		graphicsBuffer.cmdSetViewport(viewport);
 		graphicsBuffer.cmdSetScissor(scissor);
 
+		graphicsBuffer.cmdPushConstant(layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(camData), &camData);
 		graphicsBuffer.cmdDraw(6, 0);
 
 		ImGui_ImplVulkan_RenderDrawData(main_draw_data, *graphicsBuffer);
@@ -308,5 +320,5 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
 
 void Engine::drawImgui() const
 {
-	ImGui::ShowDemoWindow();
+	//ImGui::ShowDemoWindow();
 }

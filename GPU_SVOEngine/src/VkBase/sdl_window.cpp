@@ -257,7 +257,7 @@ void SDLWindow::_createSwapchain(const uint32_t deviceID, const VkExtent2D size,
 	createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	createInfo.preTransform = capabilities.currentTransform;
 	createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-	createInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+	createInfo.presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
 	createInfo.clipped = VK_TRUE;
 
 	if (vkCreateSwapchainKHR(device.m_vkHandle, &createInfo, nullptr, &m_swapchain.swapchain) != VK_SUCCESS)

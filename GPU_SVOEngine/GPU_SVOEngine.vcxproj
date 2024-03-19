@@ -139,6 +139,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\camera.cpp" />
     <ClCompile Include="src\Octree\octree.cpp" />
     <ClCompile Include="src\engine.cpp" />
     <ClCompile Include="src\VkBase\sdl_window.cpp" />
@@ -160,6 +161,7 @@
     <ClCompile Include="src\VkBase\vulkan_framebuffer.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\camera.hpp" />
     <ClInclude Include="include\engine.hpp" />
     <ClInclude Include="include\VkBase\vulkan_base.hpp" />
     <ClInclude Include="include\VkBase\vulkan_binding.hpp" />

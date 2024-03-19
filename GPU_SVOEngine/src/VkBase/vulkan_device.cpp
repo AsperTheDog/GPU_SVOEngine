@@ -661,7 +661,7 @@ uint32_t VulkanDevice::createShader(const std::string& filename, const VkShaderS
 
 	if (result.code.empty())
 	{
-		std::cerr << "Failed to load shader " << filename << ":" << result.error << "\n";
+		std::cerr << "Failed to load shader:" << result.error << "\n";
 		throw std::runtime_error("Failed to create shader module");
 	}
 

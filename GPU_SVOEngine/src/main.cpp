@@ -9,6 +9,5 @@ int main()
 	octree.populateSample(3);
 
 	engine.run();
-
 	return 0;
 }

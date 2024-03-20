@@ -7,6 +7,7 @@
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
+#include "imgui_internal.h"
 #include "logger.hpp"
 #include "backends/imgui_impl_vulkan.h"
 #include "VkBase/vulkan_context.hpp"
@@ -80,6 +81,8 @@ Engine::Engine() : cam({0, 0, 0}, {0, 0, 0}), m_window("Vulkan", 1920, 1080)
 		cam.setPosition({0.0f, 0.0f, -9.0f});
 		cam.lookAt({0.0f, 0.0f, 0.0f});
 	}
+
+	setupInputEvents();
 }
 
 Engine::~Engine()
@@ -175,7 +178,7 @@ void Engine::createRenderPass()
 	VulkanRenderPassBuilder builder{};
 
 	const VkAttachmentDescription colorAttachment = VulkanRenderPassBuilder::createAttachment(m_window.getSwapchainImageFormat().format, 
-		VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, 
+		VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_STORE, 
 		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 	builder.addAttachment(colorAttachment);
 
@@ -273,6 +276,14 @@ void Engine::initImgui() const
     ImGui_ImplVulkan_Init(&init_info);
 }
 
+void Engine::setupInputEvents()
+{
+	m_window.getMouseMovedSignal().connect(&cam, &Camera::mouseMoved);
+	m_window.getKeyPressedSignal().connect(&cam, &Camera::keyPressed);
+	m_window.getKeyReleasedSignal().connect(&cam, &Camera::keyReleased);
+	m_window.getEventsProcessedSignal().connect(&cam, &Camera::updateEvents);
+}
+
 void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_draw_data)
 {
 	Logger::pushContext("Command buffer recording");
@@ -320,5 +331,11 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
 
 void Engine::drawImgui() const
 {
-	ImGui::ShowDemoWindow();
+	ImGuiContext* g = ImGui::GetCurrentContext();
+	const ImGuiIO& io = ImGui::GetIO();
+
+	ImGui::Begin("Metrics");
+    ImGui::Text("%.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+
+	ImGui::End();
 }

@@ -163,6 +163,7 @@
   <ItemGroup>
     <ClInclude Include="include\camera.hpp" />
     <ClInclude Include="include\engine.hpp" />
+    <ClInclude Include="include\signal.hpp" />
     <ClInclude Include="include\VkBase\vulkan_base.hpp" />
     <ClInclude Include="include\VkBase\vulkan_binding.hpp" />
     <ClInclude Include="include\logger.hpp" />

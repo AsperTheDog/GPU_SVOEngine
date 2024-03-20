@@ -31,19 +31,40 @@ public:
 
 	[[nodiscard]] Data getData();
 
+	void mouseMoved(int32_t relX, int32_t relY);
+	void keyPressed(uint32_t key);
+	void keyReleased(uint32_t key);
+	void updateEvents(float delta);
+
 private:
+	void calculateRightVector();
+
+	float m_movingSpeed = 10.f;
+	float m_mouseSensitivity = 0.1f;
+
 	glm::vec3 m_position;
 	glm::vec3 m_front;
+	glm::vec3 m_right;
 	float m_fov;
 	float m_aspectRatio;
 	float m_near;
 	float m_far;
 
+    float m_yaw;
+    float m_pitch;
+
 	bool m_viewDirty;
 	glm::mat4 m_viewMatrix{};
 	bool m_projDirty;
 	glm::mat4 m_projMatrix{};
-	bool m_invPVDirty;
 	glm::mat4 m_invPVMatrix{};
+
+	//Event tracker
+	bool m_wPressed = false;
+	bool m_aPressed = false;
+	bool m_sPressed = false;
+	bool m_dPressed = false;
+	bool m_spacePressed = false;
+	bool m_shiftPressed = false;
 };
 

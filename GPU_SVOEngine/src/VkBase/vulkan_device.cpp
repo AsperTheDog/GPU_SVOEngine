@@ -637,7 +637,7 @@ VulkanSemaphore& VulkanDevice::getSemaphore(const uint32_t id)
 	throw std::runtime_error("Semaphore not found");
 }
 
-void VulkanDevice::freeSemaphore(uint32_t id)
+void VulkanDevice::freeSemaphore(const uint32_t id)
 {
 	for (auto it = m_semaphores.begin(); it != m_semaphores.end(); ++it)
 	{

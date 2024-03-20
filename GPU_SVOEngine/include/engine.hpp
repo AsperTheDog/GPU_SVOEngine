@@ -22,6 +22,8 @@ private:
 	uint32_t createFramebuffer(VkImageView colorAttachment) const;
 	void initImgui() const;
 
+	void setupInputEvents();
+
 	void recordCommandBuffer(uint32_t framebufferID, ImDrawData* main_draw_data);
 
 	void drawImgui() const;

@@ -244,7 +244,7 @@ VkCommandBuffer VulkanCommandBuffer::operator*() const
 	return m_vkHandle;
 }
 
-VulkanCommandBuffer::VulkanCommandBuffer(uint32_t device, const VkCommandBuffer commandBuffer, const bool isSecondary, const uint32_t familyIndex, const uint32_t threadID)
+VulkanCommandBuffer::VulkanCommandBuffer(const uint32_t device, const VkCommandBuffer commandBuffer, const bool isSecondary, const uint32_t familyIndex, const uint32_t threadID)
 	: m_vkHandle(commandBuffer), m_isSecondary(isSecondary), m_familyIndex(familyIndex), m_threadID(threadID), m_device(device)
 {
 }

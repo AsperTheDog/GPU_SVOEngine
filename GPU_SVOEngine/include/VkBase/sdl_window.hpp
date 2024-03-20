@@ -2,7 +2,10 @@
 #include <SDL2/SDL_vulkan.h>
 #include <string_view>
 #include <vector>
+#include <SDL2/SDL_keycode.h>
 #include <vulkan/vulkan_core.h>
+
+#include "signal.hpp"
 
 class VulkanFence;
 class VulkanDevice;
@@ -54,6 +57,12 @@ public:
 	void present(const VulkanQueue& queue, uint32_t imageIndex, uint32_t waitSemaphore = UINT32_MAX) const;
 	void frameImgui() const;
 
+	[[nodiscard]] Signal<VkExtent2D>& getSwapchainRebuiltSignal();
+	[[nodiscard]] Signal<int32_t, int32_t>& getMouseMovedSignal();
+	[[nodiscard]] Signal<uint32_t>& getKeyPressedSignal();
+	[[nodiscard]] Signal<uint32_t>& getKeyReleasedSignal();
+	[[nodiscard]] Signal<float>& getEventsProcessedSignal();
+
 private:
 	struct Swapchain
 	{
@@ -71,6 +80,16 @@ private:
 	Swapchain m_swapchain{};
 
 	uint32_t m_deviceID = UINT32_MAX;
+
+	// Signals
+	Signal<VkExtent2D> m_swapchainRebuilt;
+	Signal<int32_t, int32_t> m_mouseMoved;
+	Signal<uint32_t> m_keyPressed;
+	Signal<uint32_t> m_keyReleased;
+	Signal<float> m_eventsProcessed;
+
+	float prevDt = 0.f;
+	float dt = 0.f;
 
 	void freeSwapchain();
 	void rebuildSwapchain(VkExtent2D newExtent);

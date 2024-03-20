@@ -31,6 +31,7 @@ SDLWindow::SDLWindow(const std::string_view name, const int width, const int hei
 {
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
 	m_SDLHandle = SDL_CreateWindow(name.data(), top, left, width, height, flags | SDL_WINDOW_VULKAN);
+	SDL_SetRelativeMouseMode(SDL_TRUE);
 }
 
 void SDLWindow::initImgui() const
@@ -83,8 +84,21 @@ void SDLWindow::pollEvents()
 			if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED && event.window.data1 > 0 && event.window.data2 > 0)
 				rebuildSwapchain(WindowSize{event.window.data1, event.window.data2}.toExtent2D());
 			break;
+		case SDL_MOUSEMOTION:
+			m_mouseMoved.emit(event.motion.xrel, event.motion.yrel);
+			break;
+		case SDL_KEYDOWN:
+			m_keyPressed.emit(event.key.keysym.sym);
+			break;
+		case SDL_KEYUP:
+			m_keyReleased.emit(event.key.keysym.sym);
+			break;
 		}
 	}
+	const uint64_t now = SDL_GetTicks64();
+	dt = (static_cast<float>(now) - prevDt) * 0.001f;
+	prevDt = static_cast<float>(now);
+	m_eventsProcessed.emit(dt);
 }
 
 void SDLWindow::createSurface()
@@ -205,6 +219,31 @@ void SDLWindow::present(const VulkanQueue& queue, const uint32_t imageIndex, con
 void SDLWindow::frameImgui() const
 {
 	ImGui_ImplSDL2_NewFrame();
+}
+
+Signal<VkExtent2D>& SDLWindow::getSwapchainRebuiltSignal()
+{
+	return m_swapchainRebuilt;
+}
+
+Signal<int32_t, int32_t>& SDLWindow::getMouseMovedSignal()
+{
+	return m_mouseMoved;
+}
+
+Signal<uint32_t>& SDLWindow::getKeyPressedSignal()
+{
+	return m_keyPressed;
+}
+
+Signal<uint32_t>& SDLWindow::getKeyReleasedSignal()
+{
+	return m_keyReleased;
+}
+
+Signal<float>& SDLWindow::getEventsProcessedSignal()
+{
+	return m_eventsProcessed;
 }
 
 void SDLWindow::freeSwapchain()

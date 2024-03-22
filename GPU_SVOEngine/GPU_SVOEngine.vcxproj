@@ -188,6 +188,10 @@
   <ItemGroup>
     <ResourceCompile Include="GPU_SVOEngine.rc" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="shaders\raytracing.frag" />
+    <None Include="shaders\raytracing.vert" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

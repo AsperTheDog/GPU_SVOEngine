@@ -56,7 +56,7 @@ public:
 	void freeRenderPass(uint32_t id);
 	void freeRenderPass(const VulkanRenderPass& renderPass);
 
-	uint32_t createPipelineLayout(const std::vector<VkDescriptorSetLayout>& descriptorSetLayouts, const std::vector<VkPushConstantRange>& pushConstantRanges);
+	uint32_t createPipelineLayout(const std::vector<uint32_t>& descriptorSetLayouts, const std::vector<VkPushConstantRange>& pushConstantRanges);
 	VulkanPipelineLayout& getPipelineLayout(uint32_t id);
 	void freePipelineLayout(uint32_t id);
 	void freePipelineLayout(const VulkanPipelineLayout& layout);
@@ -77,6 +77,17 @@ public:
 	void freeDescriptorPool(uint32_t id);
 	void freeDescriptorPool(const VulkanDescriptorPool& descriptorPool);
 
+	uint32_t createDescriptorSetLayout(const std::vector<VkDescriptorSetLayoutBinding>& bindings, VkDescriptorSetLayoutCreateFlags flags);
+	VulkanDescriptorSetLayout& getDescriptorSetLayout(uint32_t id);
+	void freeDescriptorSetLayout(uint32_t id);
+	void freeDescriptorSetLayout(const VulkanDescriptorSetLayout& layout);
+
+	uint32_t createDescriptorSet(uint32_t pool, uint32_t layout);
+	std::vector<uint32_t> createDescriptorSets(uint32_t pool, uint32_t layout, uint32_t count);
+	VulkanDescriptorSet& getDescriptorSet(uint32_t id);
+	void freeDescriptorSet(uint32_t id);
+	void freeDescriptorSet(const VulkanDescriptorSet& descriptorSet);
+
 	uint32_t createSemaphore();
 	VulkanSemaphore& getSemaphore(uint32_t id);
 	void freeSemaphore(uint32_t id);
@@ -89,7 +100,9 @@ public:
 
 	void waitIdle() const;
 
+	[[nodiscard]] bool isStagingBufferConfigured() const;
 	void configureStagingBuffer(VkDeviceSize size, const QueueSelection& queue, bool forceAllowStagingMemory = false);
+	void freeStagingBuffer();
 	void* mapStagingBuffer(VkDeviceSize size, VkDeviceSize offset);
 	void unmapStagingBuffer();
 	void dumpStagingBuffer(uint32_t buffer, VkDeviceSize size, VkDeviceSize offset, uint32_t threadID);
@@ -106,6 +119,8 @@ private:
 	void free();
 
 	[[nodiscard]] VkDeviceMemory getMemoryHandle(uint32_t chunk) const;
+
+	VulkanDevice(VulkanGPU pDevice, VkDevice device);
 
 	struct ThreadCommandInfo
 	{
@@ -125,8 +140,6 @@ private:
 		QueueSelection queue{};
 	} m_stagingBufferInfo;
 
-	VulkanDevice(VulkanGPU pDevice, VkDevice device);
-
 	VkDevice m_vkHandle;
 
 	VulkanGPU m_physicalDevice;
@@ -140,6 +153,8 @@ private:
 	std::vector<VulkanShader> m_shaders;
 	std::vector<VulkanPipeline> m_pipelines;
 	std::vector<VulkanDescriptorPool> m_descriptorPools;
+	std::vector<VulkanDescriptorSetLayout> m_descriptorSetLayouts;
+	std::vector<VulkanDescriptorSet> m_descriptorSets;
 	std::vector<VulkanImage> m_images;
 	std::vector<VulkanSemaphore> m_semaphores;
 	std::vector<VulkanFence> m_fences;
@@ -164,4 +179,6 @@ private:
 	friend class VulkanFramebuffer;
 	friend class VulkanShader;
 	friend class VulkanDescriptorPool;
+	friend class VulkanDescriptorSetLayout;
+	friend class VulkanDescriptorSet;
 };

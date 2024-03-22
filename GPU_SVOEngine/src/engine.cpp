@@ -10,6 +10,7 @@
 #include "imgui_internal.h"
 #include "logger.hpp"
 #include "backends/imgui_impl_vulkan.h"
+#include "Octree/octree.hpp"
 #include "VkBase/vulkan_context.hpp"
 
 VulkanGPU chooseCorrectGPU()
@@ -50,20 +51,18 @@ Engine::Engine() : cam({0, 0, 0}, {0, 0, 0}), m_window("Vulkan", 1920, 1080)
 	selector.selectQueueFamily(presentQueueFamily, QueueFamilyTypeBits::PRESENT);
 	m_graphicsQueuePos = selector.getOrAddQueue(graphicsQueueFamily, 1.0);
 	m_presentQueuePos = selector.getOrAddQueue(presentQueueFamily, 1.0);
-	QueueSelection transferQueuePos = selector.addQueue(transferQueueFamily, 1.0);
+	m_transferQueuePos = selector.addQueue(transferQueueFamily, 1.0);
 
 	m_deviceID = VulkanContext::createDevice(gpu, selector, {VK_KHR_SWAPCHAIN_EXTENSION_NAME}, {});
 	VulkanDevice& device = VulkanContext::getDevice(m_deviceID);
 
 	m_window.createSwapchain(m_deviceID, {VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR});
 
-	device.configureOneTimeQueue(transferQueuePos);
+	device.configureOneTimeQueue(m_transferQueuePos);
 	m_graphicsCmdBufferID = device.createCommandBuffer(graphicsQueueFamily, 0, false);
 
 	createRenderPass();
 	createGraphicsPipeline();
-
-	device.configureStagingBuffer(5LL * 1024 * 1024, transferQueuePos);
 
 	m_framebuffers.resize(m_window.getImageCount());
 	for (uint32_t i = 0; i < m_window.getImageCount(); i++)
@@ -74,8 +73,6 @@ Engine::Engine() : cam({0, 0, 0}, {0, 0, 0}), m_window("Vulkan", 1920, 1080)
 	m_renderFinishedSemaphoreID = device.createSemaphore();
 	m_inFlightFenceID = device.createFence(true);
 
-	initImgui();
-
 	{
 		cam.setScreenSize(m_window.getSize().width, m_window.getSize().height);
 		cam.setPosition({0.0f, 0.0f, -9.0f});
@@ -83,6 +80,8 @@ Engine::Engine() : cam({0, 0, 0}, {0, 0, 0}), m_window("Vulkan", 1920, 1080)
 	}
 
 	setupInputEvents();
+
+	initImgui();
 }
 
 Engine::~Engine()
@@ -101,7 +100,60 @@ Engine::~Engine()
 
 void Engine::configureOctreeBuffer(Octree& octree)
 {
+	{
+		if (m_octreeBuffer != UINT32_MAX)
+		{
+			VulkanContext::getDevice(m_deviceID).freeBuffer(m_octreeBuffer);
+		}
 
+		const VkDeviceSize bufferSize = octree.getByteSize();
+
+		m_octreeBuffer = VulkanContext::getDevice(m_deviceID).createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+		VulkanContext::getDevice(m_deviceID).getBuffer(m_octreeBuffer).allocateFromFlags({VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, false});
+
+
+		bool transientConfig = false;
+		if (!VulkanContext::getDevice(m_deviceID).isStagingBufferConfigured())
+		{
+			transientConfig = true;
+			VulkanContext::getDevice(m_deviceID).configureStagingBuffer(bufferSize, m_transferQueuePos);
+		}
+		{
+			void* stagePtr = VulkanContext::getDevice(m_deviceID).mapStagingBuffer(bufferSize, 0);
+			memcpy(stagePtr, octree.getData(), bufferSize);
+			VulkanContext::getDevice(m_deviceID).dumpStagingBuffer(m_octreeBuffer, bufferSize, 0, 0);
+		}
+		if (transientConfig)
+		{
+			VulkanContext::getDevice(m_deviceID).freeStagingBuffer();
+		}
+	}
+
+	{
+		if (m_octreeDescrPool != UINT32_MAX)
+		{
+			VulkanContext::getDevice(m_deviceID).freeDescriptorPool(m_octreeDescrPool);
+		}
+
+		m_octreeDescrPool = VulkanContext::getDevice(m_deviceID).createDescriptorPool({{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1}}, 1, 0);
+		m_octreeDescrSet = VulkanContext::getDevice(m_deviceID).createDescriptorSet(m_octreeDescrPool, m_octreeDescrSetLayout);
+
+		VkDescriptorBufferInfo bufferInfo;
+		bufferInfo.buffer = *VulkanContext::getDevice(m_deviceID).getBuffer(m_octreeBuffer);
+		bufferInfo.offset = 0;
+		bufferInfo.range = VK_WHOLE_SIZE;
+
+		VkWriteDescriptorSet writeDescriptorSet = {};
+		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDescriptorSet.dstSet = *VulkanContext::getDevice(m_deviceID).getDescriptorSet(m_octreeDescrSet);
+		writeDescriptorSet.dstBinding = 0;
+		writeDescriptorSet.dstArrayElement = 0;
+		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		writeDescriptorSet.descriptorCount = 1;
+		writeDescriptorSet.pBufferInfo = &bufferInfo;
+
+		VulkanContext::getDevice(m_deviceID).getDescriptorSet(m_octreeDescrSet).updateDescriptorSet(writeDescriptorSet);
+	}
 }
 
 void Engine::run()
@@ -191,9 +243,17 @@ void Engine::createRenderPass()
 void Engine::createGraphicsPipeline()
 {
 	Logger::pushContext("Create Pipeline");
+
+	VkDescriptorSetLayoutBinding octreeBinding{};
+	octreeBinding.binding = 0;
+	octreeBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	octreeBinding.descriptorCount = 1;
+	octreeBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	m_octreeDescrSetLayout = VulkanContext::getDevice(m_deviceID).createDescriptorSetLayout({octreeBinding}, 0);
+
 	std::vector<VkPushConstantRange> pushConstants{1};
 	pushConstants[0] = {VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(glm::vec4) + sizeof(glm::mat4)};
-	const uint32_t layout = VulkanContext::getDevice(m_deviceID).createPipelineLayout({}, pushConstants);
+	const uint32_t layout = VulkanContext::getDevice(m_deviceID).createPipelineLayout({m_octreeDescrSetLayout}, pushConstants);
 
 	const uint32_t vertexShader = VulkanContext::getDevice(m_deviceID).createShader("shaders/raytracing.vert", VK_SHADER_STAGE_VERTEX_BIT);
 	const uint32_t fragmentShader = VulkanContext::getDevice(m_deviceID).createShader("shaders/raytracing.frag", VK_SHADER_STAGE_FRAGMENT_BIT);
@@ -258,7 +318,7 @@ void Engine::initImgui() const
 			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
 			{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
 		};
-	const uint32_t imguiPoolID = device.createDescriptorPool(pool_sizes, 1000 * pool_sizes.size(), VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT);
+	const uint32_t imguiPoolID = device.createDescriptorPool(pool_sizes, 1000U * pool_sizes.size(), VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT);
 
     m_window.initImgui();
     ImGui_ImplVulkan_InitInfo init_info = {};
@@ -282,6 +342,14 @@ void Engine::setupInputEvents()
 	m_window.getKeyPressedSignal().connect(&cam, &Camera::keyPressed);
 	m_window.getKeyReleasedSignal().connect(&cam, &Camera::keyReleased);
 	m_window.getEventsProcessedSignal().connect(&cam, &Camera::updateEvents);
+	// lambda example
+	m_window.getKeyPressedSignal().connect([&](uint32_t key)
+	{
+		if (key == SDLK_g)
+		{
+			m_window.toggleMouseCapture();
+		}
+	});
 }
 
 void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_draw_data)
@@ -331,7 +399,6 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
 
 void Engine::drawImgui() const
 {
-	ImGuiContext* g = ImGui::GetCurrentContext();
 	const ImGuiIO& io = ImGui::GetIO();
 
 	ImGui::Begin("Metrics");

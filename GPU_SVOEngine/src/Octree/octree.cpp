@@ -122,3 +122,8 @@ void Octree::addChild(const OctreeNode child)
 {
 	data.push_back(child);
 }
+
+void* Octree::getData()
+{
+	return data.data();
+}

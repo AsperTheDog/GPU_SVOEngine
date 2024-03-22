@@ -31,7 +31,7 @@ SDLWindow::SDLWindow(const std::string_view name, const int width, const int hei
 {
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
 	m_SDLHandle = SDL_CreateWindow(name.data(), top, left, width, height, flags | SDL_WINDOW_VULKAN);
-	SDL_SetRelativeMouseMode(SDL_TRUE);
+	toggleMouseCapture();
 }
 
 void SDLWindow::initImgui() const
@@ -99,6 +99,15 @@ void SDLWindow::pollEvents()
 	dt = (static_cast<float>(now) - prevDt) * 0.001f;
 	prevDt = static_cast<float>(now);
 	m_eventsProcessed.emit(dt);
+}
+
+void SDLWindow::toggleMouseCapture()
+{
+	m_mouseCaptured = !m_mouseCaptured;
+	if (m_mouseCaptured)
+		SDL_SetRelativeMouseMode(SDL_TRUE);
+	else
+		SDL_SetRelativeMouseMode(SDL_FALSE);
 }
 
 void SDLWindow::createSurface()

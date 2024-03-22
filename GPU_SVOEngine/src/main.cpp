@@ -8,6 +8,7 @@ int main()
 	Octree octree;
 	octree.populateSample(3);
 
+	engine.configureOctreeBuffer(octree);
 	engine.run();
 	return 0;
 }

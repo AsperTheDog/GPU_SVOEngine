@@ -152,4 +152,8 @@
       <Filter>Resource Files</Filter>
     </ResourceCompile>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="shaders\raytracing.vert" />
+    <None Include="shaders\raytracing.frag" />
+  </ItemGroup>
 </Project>

@@ -36,6 +36,7 @@ private:
 
 	QueueSelection m_graphicsQueuePos{};
 	QueueSelection m_presentQueuePos{};
+	QueueSelection m_transferQueuePos{};
 
 	uint32_t m_graphicsCmdBufferID = UINT32_MAX;
 	uint32_t m_renderPassID = UINT32_MAX;
@@ -44,5 +45,10 @@ private:
 	uint32_t m_imageAvailableSemaphoreID = UINT32_MAX;
 	uint32_t m_renderFinishedSemaphoreID = UINT32_MAX;
 	uint32_t m_inFlightFenceID = UINT32_MAX;
+
+	uint32_t m_octreeBuffer = UINT32_MAX;
+	uint32_t m_octreeDescrPool = UINT32_MAX;
+	uint32_t m_octreeDescrSetLayout = UINT32_MAX;
+	uint32_t m_octreeDescrSet = UINT32_MAX;
 };
 

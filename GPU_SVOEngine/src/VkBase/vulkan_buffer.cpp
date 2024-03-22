@@ -49,6 +49,16 @@ VkBuffer VulkanBuffer::operator*() const
 	return m_vkHandle;
 }
 
+bool VulkanBuffer::isMemoryBound() const
+{
+	return m_memoryRegion.size > 0;
+}
+
+uint32_t VulkanBuffer::getBoundMemoryType() const
+{
+	return VulkanContext::getDevice(m_device).m_memoryAllocator.getChunkMemoryType(m_memoryRegion.chunk);
+}
+
 void* VulkanBuffer::map(const VkDeviceSize size, const VkDeviceSize offset)
 {
 	void* data;

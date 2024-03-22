@@ -180,7 +180,7 @@ void Camera::keyReleased(const uint32_t key)
 	}
 }
 
-void Camera::updateEvents(float delta)
+void Camera::updateEvents(const float delta)
 {
 	glm::vec3 moveDir(0.0f);
 	if (m_wPressed)

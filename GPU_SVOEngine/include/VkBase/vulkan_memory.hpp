@@ -94,6 +94,8 @@ public:
 	[[nodiscard]] bool suitableChunkExists(uint32_t memoryType, VkDeviceSize size) const;
 	[[nodiscard]] bool isMemoryTypeHidden(unsigned value) const;
 
+	[[nodiscard]] uint32_t getChunkMemoryType(uint32_t chunk) const;
+
 private:
 	void free();
 

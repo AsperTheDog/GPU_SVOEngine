@@ -23,6 +23,9 @@ public:
 
 	VkBuffer operator*() const;
 
+	[[nodiscard]] bool isMemoryBound() const;
+	[[nodiscard]] uint32_t getBoundMemoryType() const;
+
 private:
 	void free();
 

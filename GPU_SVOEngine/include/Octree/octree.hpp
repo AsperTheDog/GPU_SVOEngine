@@ -63,6 +63,8 @@ public:
 	void populateSample(uint8_t depth);
 	void addChild(OctreeNode child);
 
+	void* getData();
+
 private:
 	std::vector<OctreeNode> data;
 	uint8_t depth = 0;

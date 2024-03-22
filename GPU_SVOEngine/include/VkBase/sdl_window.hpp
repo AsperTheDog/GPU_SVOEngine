@@ -38,6 +38,7 @@ public:
 	[[nodiscard]] VkExtent2D getSwapchainExtent() const;
 
 	void pollEvents();
+	void toggleMouseCapture();
 
 	void createSurface();
 	void createSwapchain(uint32_t deviceID, VkSurfaceFormatKHR desiredFormat);
@@ -90,6 +91,8 @@ private:
 
 	float prevDt = 0.f;
 	float dt = 0.f;
+
+	bool m_mouseCaptured = false;
 
 	void freeSwapchain();
 	void rebuildSwapchain(VkExtent2D newExtent);

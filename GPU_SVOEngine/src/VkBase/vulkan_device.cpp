@@ -3,6 +3,7 @@
 #include <iostream>
 #include <ranges>
 #include <stdexcept>
+#include <vulkan/vk_enum_string_helper.h>
 
 #include "logger.hpp"
 
@@ -204,6 +205,7 @@ uint32_t VulkanDevice::createFramebuffer(const VkExtent3D size, const VulkanRend
 	}
 
 	m_framebuffers.push_back({m_id, framebuffer});
+	Logger::print("Created framebuffer with id " + std::to_string(m_framebuffers.back().getID()));
 	return m_framebuffers.back().getID();
 }
 
@@ -354,7 +356,7 @@ void VulkanDevice::configureStagingBuffer(const VkDeviceSize size, const QueueSe
 {
 	if (m_stagingBufferInfo.stagingBuffer != UINT32_MAX)
 	{
-		throw std::runtime_error("Staging buffer already configured! Reconfiguration is not implemented yet TvT");
+		freeStagingBuffer();
 	}
 
 	m_stagingBufferInfo.stagingBuffer = createBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
@@ -366,6 +368,13 @@ void VulkanDevice::configureStagingBuffer(const VkDeviceSize size, const QueueSe
 	const std::optional<uint32_t> memoryType = m_memoryAllocator.getMemoryStructure().getStagingMemoryType(memRequirements.memoryTypeBits);
 	if (memoryType.has_value() && !m_memoryAllocator.isMemoryTypeHidden(memoryType.value()))
 	{
+		const uint32_t heapIndex = m_physicalDevice.getMemoryProperties().memoryTypes[memRequirements.memoryTypeBits].heapIndex;
+		const VkDeviceSize heapSize = m_physicalDevice.getMemoryProperties().memoryHeaps[heapIndex].size;
+		if (heapSize < size)
+		{
+			stagingBuffer.allocateFromFlags({VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VK_MEMORY_PROPERTY_HOST_CACHED_BIT, true});
+			return;
+		}
 		stagingBuffer.allocateFromIndex(memoryType.value());
 		if (!forceAllowStagingMemory)
 			m_memoryAllocator.hideMemoryType(memoryType.value());
@@ -373,6 +382,20 @@ void VulkanDevice::configureStagingBuffer(const VkDeviceSize size, const QueueSe
 	else
 	{
 		stagingBuffer.allocateFromFlags({VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VK_MEMORY_PROPERTY_HOST_CACHED_BIT, true});
+	}
+}
+
+void VulkanDevice::freeStagingBuffer()
+{
+	if (m_stagingBufferInfo.stagingBuffer != UINT32_MAX)
+	{
+		{
+			VulkanBuffer& stagingBuffer = getBuffer(m_stagingBufferInfo.stagingBuffer);
+			if (stagingBuffer.isMemoryBound())
+				m_memoryAllocator.unhideMemoryType(stagingBuffer.getBoundMemoryType());
+			stagingBuffer.free();
+		}
+		m_stagingBufferInfo.stagingBuffer = UINT32_MAX;
 	}
 }
 
@@ -497,12 +520,18 @@ void VulkanDevice::freeRenderPass(const VulkanRenderPass& renderPass)
 	freeRenderPass(renderPass.m_id);
 }
 
-uint32_t VulkanDevice::createPipelineLayout(const std::vector<VkDescriptorSetLayout>& descriptorSetLayouts, const std::vector<VkPushConstantRange>& pushConstantRanges)
+uint32_t VulkanDevice::createPipelineLayout(const std::vector<uint32_t>& descriptorSetLayouts, const std::vector<VkPushConstantRange>& pushConstantRanges)
 {
+	std::vector<VkDescriptorSetLayout> layouts;
+	for (const uint32_t id : descriptorSetLayouts)
+	{
+		layouts.push_back(getDescriptorSetLayout(id).m_vkHandle);
+	}
+
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(descriptorSetLayouts.size());
-	pipelineLayoutInfo.pSetLayouts = descriptorSetLayouts.data();
+	pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(layouts.size());
+	pipelineLayoutInfo.pSetLayouts = layouts.data();
 	pipelineLayoutInfo.pushConstantRangeCount = static_cast<uint32_t>(pushConstantRanges.size());
 	pipelineLayoutInfo.pPushConstantRanges = pushConstantRanges.data();
 
@@ -513,6 +542,7 @@ uint32_t VulkanDevice::createPipelineLayout(const std::vector<VkDescriptorSetLay
 	}
 
 	m_pipelineLayouts.push_back({m_id, layout});
+	Logger::print("Created pipeline layout with id " + std::to_string(m_pipelineLayouts.back().getID()));
 	return m_pipelineLayouts.back().getID();
 }
 
@@ -588,10 +618,11 @@ uint32_t VulkanDevice::createDescriptorPool(const std::vector<VkDescriptorPoolSi
 	VkDescriptorPool descriptorPool;
 	if (vkCreateDescriptorPool(m_vkHandle, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS)
 	{
-				throw std::runtime_error("Failed to create descriptor pool");
+		throw std::runtime_error("Failed to create descriptor pool");
 	}
 
-	m_descriptorPools.push_back({m_id, descriptorPool});
+	m_descriptorPools.push_back({m_id, descriptorPool, flags});
+	Logger::print("Created descriptor pool with id " + std::to_string(m_descriptorPools.back().getID()));
 	return m_descriptorPools.back().getID();
 }
 
@@ -623,6 +654,134 @@ void VulkanDevice::freeDescriptorPool(const uint32_t id)
 void VulkanDevice::freeDescriptorPool(const VulkanDescriptorPool& descriptorPool)
 {
 	freeDescriptorPool(descriptorPool.getID());
+}
+
+uint32_t VulkanDevice::createDescriptorSetLayout(const std::vector<VkDescriptorSetLayoutBinding>& bindings, const VkDescriptorSetLayoutCreateFlags flags)
+{
+	VkDescriptorSetLayoutCreateInfo layoutInfo{};
+	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layoutInfo.flags = flags;
+	layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+	layoutInfo.pBindings = bindings.data();
+
+	VkDescriptorSetLayout descriptorSetLayout;
+	if (vkCreateDescriptorSetLayout(m_vkHandle, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create descriptor set layout");
+	}
+
+	m_descriptorSetLayouts.push_back({m_id, descriptorSetLayout});
+	Logger::print("Created descriptor set layout with id " + std::to_string(m_descriptorSetLayouts.back().getID()));
+	return m_descriptorSetLayouts.back().getID();
+
+}
+
+VulkanDescriptorSetLayout& VulkanDevice::getDescriptorSetLayout(const uint32_t id)
+{
+	for (VulkanDescriptorSetLayout& layout : m_descriptorSetLayouts)
+	{
+		if (layout.m_id == id)
+		{
+			return layout;
+		}
+	}
+	throw std::runtime_error("Descriptor set layout not found");
+}
+
+void VulkanDevice::freeDescriptorSetLayout(const uint32_t id)
+{
+	for (auto it = m_descriptorSetLayouts.begin(); it != m_descriptorSetLayouts.end(); ++it)
+	{
+		if (it->m_id == id)
+		{
+			it->free();
+			m_descriptorSetLayouts.erase(it);
+			break;
+		}
+	}
+}
+
+void VulkanDevice::freeDescriptorSetLayout(const VulkanDescriptorSetLayout& layout)
+{
+	freeDescriptorSetLayout(layout.m_id);
+}
+
+uint32_t VulkanDevice::createDescriptorSet(const uint32_t pool, const uint32_t layout)
+{
+	const VkDescriptorSetLayout descriptorSetLayout = getDescriptorSetLayout(layout).m_vkHandle;
+	const VkDescriptorPool descriptorPool = getDescriptorPool(pool).m_vkHandle;
+
+	VkDescriptorSetAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorPool = descriptorPool;
+	allocInfo.descriptorSetCount = 1;
+	allocInfo.pSetLayouts = &descriptorSetLayout;
+
+	VkDescriptorSet descriptorSet;
+	if (vkAllocateDescriptorSets(m_vkHandle, &allocInfo, &descriptorSet) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to allocate descriptor set");
+	}
+
+	m_descriptorSets.push_back({m_id, pool, descriptorSet});
+	Logger::print("Created descriptor set with id " + std::to_string(m_descriptorSets.back().getID()));
+	return m_descriptorSets.back().getID();
+}
+
+std::vector<uint32_t> VulkanDevice::createDescriptorSets(const uint32_t pool, const uint32_t layout, const uint32_t count)
+{
+	const VkDescriptorSetLayout descriptorSetLayout = getDescriptorSetLayout(layout).m_vkHandle;
+	const VkDescriptorPool descriptorPool = getDescriptorPool(pool).m_vkHandle;
+
+	VkDescriptorSetAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorPool = descriptorPool;
+	allocInfo.descriptorSetCount = count;
+	allocInfo.pSetLayouts = &descriptorSetLayout;
+
+	std::vector<VkDescriptorSet> descriptorSets(count);
+	if (vkAllocateDescriptorSets(m_vkHandle, &allocInfo, descriptorSets.data()) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to allocate descriptor sets");
+	}
+
+	std::vector<uint32_t> ids;
+	for (VkDescriptorSet descriptorSet : descriptorSets)
+	{
+		m_descriptorSets.push_back({m_id, pool, descriptorSet});
+		ids.push_back(m_descriptorSets.back().getID());
+	}
+	return ids;
+}
+
+VulkanDescriptorSet& VulkanDevice::getDescriptorSet(const uint32_t id)
+{
+	for (VulkanDescriptorSet& descriptorSet : m_descriptorSets)
+	{
+		if (descriptorSet.m_id == id)
+		{
+			return descriptorSet;
+		}
+	}
+	throw std::runtime_error("Descriptor set not found");
+}
+
+void VulkanDevice::freeDescriptorSet(const uint32_t id)
+{
+	for (auto it = m_descriptorSets.begin(); it != m_descriptorSets.end(); ++it)
+	{
+		if (it->m_id == id)
+		{
+			vkFreeDescriptorSets(m_vkHandle, getDescriptorPool(it->getID()).m_vkHandle, 1, &it->m_vkHandle);
+			m_descriptorSets.erase(it);
+			break;
+		}
+	}
+}
+
+void VulkanDevice::freeDescriptorSet(const VulkanDescriptorSet& descriptorSet)
+{
+	freeDescriptorSet(descriptorSet.m_id);
 }
 
 VulkanSemaphore& VulkanDevice::getSemaphore(const uint32_t id)
@@ -676,6 +835,7 @@ uint32_t VulkanDevice::createShader(const std::string& filename, const VkShaderS
 	}
 
 	m_shaders.push_back({m_id, shader, stage});
+	Logger::print("Created shader with id " + std::to_string(m_shaders.back().getID()) + " and stage " + string_VkShaderStageFlagBits(stage));
 	return m_shaders.back().getID();
 }
 
@@ -712,7 +872,7 @@ void VulkanDevice::freeShader(const VulkanShader& shader)
 void VulkanDevice::freeAllShaders()
 {
 	for (const VulkanShader& shader : m_shaders)
-		vkDestroyShaderModule(m_vkHandle, shader.m_vkHandle, nullptr);
+		freeShader(shader.getID());
 
 	m_shaders.clear();
 }
@@ -729,6 +889,7 @@ uint32_t VulkanDevice::createSemaphore()
 	}
 
 	m_semaphores.push_back({m_id, semaphore});
+	Logger::print("Created semaphore with id " + std::to_string(m_semaphores.back().getID()));
 	return m_semaphores.back().getID();
 }
 
@@ -745,6 +906,7 @@ uint32_t VulkanDevice::createFence(const bool signaled)
 	}
 
 	m_fences.push_back({m_id, fence, signaled});
+	Logger::print("Created fence with id " + std::to_string(m_fences.back().getID()));
 	return m_fences.back().getID();
 }
 
@@ -783,6 +945,11 @@ void VulkanDevice::waitIdle() const
 	vkDeviceWaitIdle(m_vkHandle);
 }
 
+bool VulkanDevice::isStagingBufferConfigured() const
+{
+	return m_stagingBufferInfo.stagingBuffer != UINT32_MAX;
+}
+
 uint32_t VulkanDevice::createPipeline(const VulkanPipelineBuilder& builder, const uint32_t pipelineLayout, const uint32_t renderPass, const uint32_t subpass)
 {
 	const std::vector<VkPipelineShaderStageCreateInfo> shaderModules = builder.createShaderStages();
@@ -809,9 +976,9 @@ uint32_t VulkanDevice::createPipeline(const VulkanPipelineBuilder& builder, cons
 	{
 		throw std::runtime_error("Failed to create graphics pipeline");
 	}
-	Logger::print("Created pipeline with handle " + std::to_string(reinterpret_cast<uint64_t>(pipeline)));
 
 	m_pipelines.push_back({*this, pipeline, pipelineLayout, renderPass, subpass});
+	Logger::print("Created pipeline with id " + std::to_string(m_pipelines.back().getID()));
 	return m_pipelines.back().getID();
 }
 
@@ -851,10 +1018,6 @@ void VulkanDevice::free()
 		renderPass.free();
 	m_renderPasses.clear();
 
-	//for (const VkDescriptorSetLayout layout : m_descriptorSetLayouts)
-	//	vkDestroyDescriptorSetLayout(m_vkHandle, layout, nullptr);
-	//m_descriptorSetLayouts.clear();
-
 	for (VulkanPipelineLayout& pipelineLayout : m_pipelineLayouts)
 		pipelineLayout.free();
 	m_pipelineLayouts.clear();
@@ -866,6 +1029,14 @@ void VulkanDevice::free()
 	for (VulkanPipeline& pipeline : m_pipelines)
 		pipeline.free();
 	m_pipelines.clear();
+
+	for (VulkanDescriptorSet& descriptorSet : m_descriptorSets)
+		descriptorSet.free();
+	m_descriptorSets.clear();
+
+	for (VulkanDescriptorSetLayout& descriptorSetLayout : m_descriptorSetLayouts)
+		descriptorSetLayout.free();
+	m_descriptorSetLayouts.clear();
 
 	for (VulkanDescriptorPool& descriptorPool : m_descriptorPools)
 		descriptorPool.free();

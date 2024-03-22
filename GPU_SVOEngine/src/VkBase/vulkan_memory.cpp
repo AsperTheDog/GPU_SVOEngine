@@ -376,3 +376,16 @@ bool VulkanMemoryAllocator::isMemoryTypeHidden(const unsigned value) const
 {
 	return m_hiddenTypes.contains(value);
 }
+
+uint32_t VulkanMemoryAllocator::getChunkMemoryType(const uint32_t chunk) const
+{
+	for (const auto& memoryChunk : m_memoryChunks)
+	{
+		if (memoryChunk.getID() == chunk)
+		{
+			return memoryChunk.getMemoryType();
+		}
+	}
+
+	throw std::runtime_error("Chunk not found");
+}

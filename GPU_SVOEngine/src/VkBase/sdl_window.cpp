@@ -154,13 +154,6 @@ uint32_t SDLWindow::acquireNextImage(const uint32_t semaphoreID, const VulkanFen
 	return imageIndex;
 }
 
-bool SDLWindow::getAndResetSwapchainRebuildFlag()
-{
-	const bool ret = m_swapchain.rebuilt;
-	m_swapchain.rebuilt = false;
-	return ret;
-}
-
 VkImageView SDLWindow::getImageView(const uint32_t index) const
 {
 	return m_swapchain.imageViews[index];
@@ -282,6 +275,9 @@ void SDLWindow::rebuildSwapchain(const VkExtent2D newExtent)
 	Logger::pushContext("Swapchain rebuild");
 	freeSwapchain();
 	_createSwapchain(m_deviceID, newExtent, m_swapchain.format);
+
+    m_swapchainRebuilt.emit(newExtent);
+
 	Logger::popContext();
 }
 

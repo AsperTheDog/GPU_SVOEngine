@@ -66,7 +66,7 @@ Engine::Engine() : cam({0, 0, 0}, {0, 0, 0}), m_window("Vulkan", 1920, 1080)
 
 	m_framebuffers.resize(m_window.getImageCount());
 	for (uint32_t i = 0; i < m_window.getImageCount(); i++)
-		m_framebuffers[i] = createFramebuffer(m_window.getImageView(i));
+		m_framebuffers[i] = createFramebuffer(m_window.getImageView(i), m_window.getSwapchainExtent());
 
 	// Create sync objects
 	m_imageAvailableSemaphoreID = device.createSemaphore();
@@ -166,27 +166,16 @@ void Engine::run()
 	const VulkanCommandBuffer& graphicsBuffer = device.getCommandBuffer(m_graphicsCmdBufferID, 0);
 
 	uint64_t frameCounter = 0;
-	Logger::setRootContext("Frame" + std::to_string(frameCounter));
 
 	while (!m_window.shouldClose())
 	{
+	    Logger::setRootContext("Frame " + std::to_string(frameCounter));
 		m_window.pollEvents();
-		inFlightFence.wait();
 
-		if (m_window.getAndResetSwapchainRebuildFlag())
-		{
-			Logger::pushContext("Swapchain resources rebuild");
-			for (uint32_t i = 0; i < m_window.getImageCount(); i++)
-			{
-				device.freeFramebuffer(m_framebuffers[i]);
-				m_framebuffers[i] = createFramebuffer(m_window.getImageView(i));
-			}
-			Logger::popContext();
-		}
+		inFlightFence.wait();
+		inFlightFence.reset();
 
 		const uint32_t nextImage = m_window.acquireNextImage(m_imageAvailableSemaphoreID, nullptr);
-
-		inFlightFence.reset();
 
 		if (nextImage == UINT32_MAX)
 		{
@@ -278,11 +267,10 @@ void Engine::createGraphicsPipeline()
 	Logger::popContext();
 }
 
-uint32_t Engine::createFramebuffer(const VkImageView colorAttachment) const
+uint32_t Engine::createFramebuffer(const VkImageView colorAttachment, const VkExtent2D newExtent) const
 {
 	const std::vector<VkImageView> attachments{colorAttachment};
-	const VkExtent2D extent = m_window.getSwapchainExtent();
-	return VulkanContext::getDevice(m_deviceID).createFramebuffer({extent.width, extent.height, 1}, VulkanContext::getDevice(m_deviceID).getRenderPass(m_renderPassID), attachments);
+	return VulkanContext::getDevice(m_deviceID).createFramebuffer({newExtent.width, newExtent.height, 1}, VulkanContext::getDevice(m_deviceID).getRenderPass(m_renderPassID), attachments);
 }
 
 void Engine::initImgui() const
@@ -342,14 +330,26 @@ void Engine::setupInputEvents()
 	m_window.getKeyPressedSignal().connect(&cam, &Camera::keyPressed);
 	m_window.getKeyReleasedSignal().connect(&cam, &Camera::keyReleased);
 	m_window.getEventsProcessedSignal().connect(&cam, &Camera::updateEvents);
-	// lambda example
-	m_window.getKeyPressedSignal().connect([&](uint32_t key)
+	m_window.getKeyPressedSignal().connect([&](const uint32_t key)
 	{
 		if (key == SDLK_g)
 		{
 			m_window.toggleMouseCapture();
 		}
 	});
+
+    m_window.getSwapchainRebuiltSignal().connect([&](const VkExtent2D extent)
+    {
+        VulkanContext::getDevice(m_deviceID).waitIdle();
+
+        Logger::pushContext("Swapchain resources rebuild");
+		for (uint32_t i = 0; i < m_window.getImageCount(); i++)
+		{
+			VulkanContext::getDevice(m_deviceID).freeFramebuffer(m_framebuffers[i]);
+			m_framebuffers[i] = createFramebuffer(m_window.getImageView(i), extent);
+		}
+		Logger::popContext();
+    });
 }
 
 void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_draw_data)
@@ -381,6 +381,8 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
 	graphicsBuffer.beginRecording();
 
 	graphicsBuffer.cmdBeginRenderPass(m_renderPassID, framebufferID, m_window.getSwapchainExtent(), clearValues);
+
+        graphicsBuffer.cmdBindDescriptorSet(VK_PIPELINE_BIND_POINT_GRAPHICS, layout, m_octreeDescrSet);
 
 		graphicsBuffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineID);
 		graphicsBuffer.cmdSetViewport(viewport);

@@ -1,5 +1,18 @@
 #include "Octree/octree.hpp"
 
+#include "logger.hpp"
+
+glm::vec3 childPositions[] = {
+    glm::vec3(0, 0, 0),
+    glm::vec3(0, 0, 1),
+    glm::vec3(0, 1, 0),
+    glm::vec3(0, 1, 1),
+    glm::vec3(1, 0, 0),
+    glm::vec3(1, 0, 1),
+    glm::vec3(1, 1, 0),
+    glm::vec3(1, 1, 1)
+};
+
 NearPtr::NearPtr(const uint16_t ptr, const bool isFar)
 	: raw(isFar ? ptr | 0x8000 : ptr & 0x7FFF)
 {
@@ -16,6 +29,11 @@ bool NearPtr::isFar() const
 {
 	// Check most significant bit
 	return (raw & 0x8000) != 0;
+}
+
+uint16_t NearPtr::toRaw() const
+{
+    return raw;
 }
 
 BitField::BitField(const uint8_t field) : field(field)
@@ -41,9 +59,41 @@ void BitField::setBit(const uint8_t index, const bool value)
 	}
 }
 
-OctreeNode::OctreeNode()
+uint8_t BitField::toRaw() const
 {
-	far.ptr = 0;
+    return field;
+}
+
+BranchNode::BranchNode(const uint32_t raw)
+{
+    const bool farFlag = (raw & 0x80000000) >> 31;
+    const uint16_t address = (raw & 0x7FFF0000) >> 16;
+    ptr = NearPtr(address, farFlag);
+    childMask = BitField((raw & 0x0000FF00) >> 8);
+    leafMask = BitField(raw & 0x000000FF);
+}
+
+uint32_t BranchNode::toRaw() const
+{
+    return ptr.toRaw() << 16 | childMask.toRaw() << 8 | leafMask.toRaw();
+}
+
+LeafNode::LeafNode(const uint32_t raw)
+{
+    material = (raw & 0xFF000000) >> 24;
+    normal.x = (raw & 0x00F00000) >> 20;
+    normal.y = (raw & 0x000F0000) >> 16;
+    normal.z = (raw & 0x0000F000) >> 12;
+    color.x =  (raw & 0x00000F00) >> 8;
+    color.y =  (raw & 0x000000F0) >> 4;
+    color.z =   raw & 0x0000000F;
+}
+
+uint32_t LeafNode::toRaw() const
+{
+    const glm::u8vec3 tmpNormal = glm::min(normal, glm::u8vec3(15));
+    const glm::u8vec3 tmpColor = glm::min(color, glm::u8vec3(15));
+    return material << 24 | tmpNormal.x << 20 | tmpNormal.y << 16 | tmpNormal.z << 12 | tmpColor.x << 8 | tmpColor.y << 4 | tmpColor.z;
 }
 
 size_t Octree::getSize() const
@@ -53,74 +103,148 @@ size_t Octree::getSize() const
 
 size_t Octree::getByteSize() const
 {
-	return data.size() * sizeof(OctreeNode);
+	return data.size() * sizeof(uint32_t);
 }
 
-OctreeNode& Octree::operator[](const size_t index)
+uint32_t& Octree::operator[](const size_t index)
 {
 	return data[index];
 }
 
-const OctreeNode& Octree::operator[](const size_t index) const
+uint32_t Octree::getFarPtr(const size_t index) const
 {
-	return data[index];
+    return farPtrs[index];
 }
 
-bool populateRec(Octree& octree, const NearPtr parentPos, const uint8_t currentDepth, const uint8_t maxDepth)
+uint8_t Octree::getDepth() const
+{
+    return depth;
+}
+
+bool populateRec(Octree& octree, const size_t parentPos, const uint8_t currentDepth, const uint8_t maxDepth, const uint8_t octant)
 {
 	if (currentDepth >= maxDepth)
 	{
-		octree[parentPos.getPtr()].leaf.color = {static_cast<uint8_t>(rand() % 256), static_cast<uint8_t>(rand() % 256), static_cast<uint8_t>(rand() % 256)};
-		return true;
+		//octree[parentPos].leaf.color = {static_cast<uint8_t>(rand() % 256), static_cast<uint8_t>(rand() % 256), static_cast<uint8_t>(rand() % 256)};
+	    //octree[parentPos].leaf.color = {16, 16, 16};
+        LeafNode leaf{0};
+        leaf.color = {0, 0, 0};
+        if ((octant & 1) != 0) leaf.color.r = 15;
+        if ((octant & 2) != 0) leaf.color.g = 15;
+        if ((octant & 4) != 0) leaf.color.b = 15;
+	    leaf.material = 0;
+	    octree[parentPos] = leaf.toRaw();
+        //Logger::print("Leaf at " + std::to_string(parentPos) + " with color " + std::to_string(leaf.color.r) + " " + std::to_string(leaf.color.g) + " " + std::to_string(leaf.color.b) + " for octant " + std::to_string(octant));
+	    return true;
 	}
 
-	const NearPtr childPtr = NearPtr(octree.getSize(), false);
+    const size_t childIdx = octree.getSize() - parentPos;
 	bool hasChildren = false;
-	for (uint8_t i = 0; i < 8; i++)
+    BranchNode parent = BranchNode(octree[parentPos]);
+    for (uint8_t i = 0; i < 8; i++)
 	{
-		if (rand() % 2 == 0)
+		if ((static_cast<float>(rand()) / RAND_MAX) > 1.0)
 		{
 			continue;
 		}
 
 		hasChildren = true;
-		octree.addChild({});
-		octree[parentPos.getPtr()].branch.childMask.setBit(i, true);
+		octree.addChild(0);
+		parent.childMask.setBit(i, true);
+        //Logger::print("Adding child at " + std::to_string(octree.getSize() - 1) + " with parent " + std::to_string(parentPos));
 	}
 
+    
 	if (hasChildren)
-		octree[parentPos.getPtr()].branch.ptr = childPtr;
+	{
+        NearPtr childPtr{0, false};
+        if (childIdx > 0x7FFF)
+        {
+            childPtr = octree.pushFarPtr(childIdx);
+        }
+        else
+        {
+            childPtr = NearPtr(static_cast<uint16_t>(childIdx), false);
+        }
+	    parent.ptr = childPtr;
+	}
 	else
-		return false;
+	{
+        //Logger::print("Parent " + std::to_string(parentPos) + " has no children");
+	    return false;
+	}
 
+    //if (parent.ptr.isFar())
+    //{
+    //    Logger::print("Parent " + std::to_string(parentPos) + " is far and points to the farPtr " + std::to_string(parent.ptr.getPtr()) +  " (" + std::to_string(octree.getFarPtr(parent.ptr.getPtr())) + ")");
+    //}
+    //else
+    //{
+    //    Logger::print("Parent " + std::to_string(parentPos) + " is near and points to " + std::to_string(parent.ptr.getPtr()));
+    //}
+    
 	uint8_t count = 0;
 	for (uint8_t i = 0; i < 8; i++)
 	{
-		if (!octree[parentPos.getPtr()].branch.childMask.getBit(i))
+		if (!parent.childMask.getBit(i))
 		{
 			continue;
 		}
 
-		const NearPtr childPos = NearPtr(childPtr.getPtr() + count, false);
-		if (populateRec(octree, childPos, currentDepth + 1, maxDepth))
+		if (populateRec(octree, parentPos + childIdx + count, currentDepth + 1, maxDepth, i))
 		{
-			octree[parentPos.getPtr()].branch.leafMask.setBit(i, true);
+			parent.leafMask.setBit(i, true);
 		}
 		++count;
 	}
+    octree[parentPos] = parent.toRaw();
 
 	return false;
 }
 
-void Octree::populateSample(const uint8_t depth)
+void Octree::populateSample(const uint8_t maxDepth)
 {
-	addChild({});
-	populateRec(*this, NearPtr(data.size() - 1, false), 0, depth);
+    Logger::pushContext("Octree population");
+	addChild(0); // Counter
+	addChild(0); // Root
+	populateRec(*this, 1, 0, maxDepth, 0);
+    pack();
+    Logger::popContext();
 }
 
-void Octree::addChild(const OctreeNode child)
+void Octree::pack()
+{
+    for (size_t i = farPtrs.size(); i != 0; i--)
+    {
+        addChild(farPtrs[i - 1]);
+    }
+    data[0] = static_cast<uint32_t>(data.size());
+}
+
+void Octree::addChild(const uint32_t child)
 {
 	data.push_back(child);
+}
+
+void Octree::addChild(const BranchNode child)
+{
+    data.push_back(child.toRaw());
+}
+
+void Octree::addChild(const LeafNode child)
+{
+    data.push_back(child.toRaw());
+}
+
+void Octree::addChild(const FarNode child)
+{
+    data.push_back(child.ptr);
+}
+
+NearPtr Octree::pushFarPtr(const size_t childPos)
+{
+    farPtrs.push_back(static_cast<uint32_t>(childPos));
+    return NearPtr(static_cast<uint16_t>(farPtrs.size() - 1), true);
 }
 
 void* Octree::getData()

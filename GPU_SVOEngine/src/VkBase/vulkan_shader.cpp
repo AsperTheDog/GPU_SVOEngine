@@ -60,7 +60,13 @@ VulkanShader::Result VulkanShader::compileFile(const std::string_view p_source_n
 	const shaderc::Compiler compiler;
 	shaderc::CompileOptions options;
 
-	if (p_optimize) options.SetOptimizationLevel(shaderc_optimization_level_performance);
+	if (p_optimize) 
+        options.SetOptimizationLevel(shaderc_optimization_level_performance);
+    else
+    {
+        options.SetOptimizationLevel(shaderc_optimization_level_zero);
+        options.SetGenerateDebugInfo();
+    }
 
 	const shaderc::SpvCompilationResult module =
 		compiler.CompileGlslToSpv(p_source.data(), p_kind, p_source_name.data(), options);

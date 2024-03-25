@@ -44,7 +44,6 @@ public:
 	void createSwapchain(uint32_t deviceID, VkSurfaceFormatKHR desiredFormat);
 
 	[[nodiscard]] uint32_t acquireNextImage(uint32_t semaphoreID, const VulkanFence* fence = nullptr) const;
-	[[nodiscard]] bool getAndResetSwapchainRebuildFlag();
 	[[nodiscard]] VkImageView getImageView(uint32_t index) const;
 	[[nodiscard]] uint32_t getImageCount() const;
 	[[nodiscard]] uint32_t getMinImageCount() const;

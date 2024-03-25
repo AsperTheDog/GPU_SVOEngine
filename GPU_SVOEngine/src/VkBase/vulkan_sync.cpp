@@ -1,5 +1,8 @@
 #include "VkBase/vulkan_sync.hpp"
 
+#include <vulkan/vk_enum_string_helper.h>
+
+#include "logger.hpp"
 #include "VkBase/vulkan_context.hpp"
 #include "VkBase/vulkan_device.hpp"
 
@@ -11,7 +14,9 @@ void VulkanFence::reset()
 
 void VulkanFence::wait()
 {
-	vkWaitForFences(VulkanContext::getDevice(m_device).m_vkHandle, 1, &m_vkHandle, VK_TRUE, UINT64_MAX);
+    const VkResult result = vkWaitForFences(VulkanContext::getDevice(m_device).m_vkHandle, 1, &m_vkHandle, VK_TRUE, UINT64_MAX);
+    if (result != VK_SUCCESS)
+        Logger::print(std::string("Fence wait result: ") + string_VkResult(result));
 	m_isSignaled = true;
 }
 

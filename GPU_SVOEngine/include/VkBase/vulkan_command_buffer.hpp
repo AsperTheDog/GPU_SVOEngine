@@ -16,7 +16,7 @@ class VulkanCommandBuffer : public VulkanBase
 public:
 	void beginRecording(VkCommandBufferUsageFlags flags = 0);
 	void endRecording();
-	void submit(const VulkanQueue& queue, const std::vector<std::pair<uint32_t, VkSemaphoreWaitFlags>>& waitSemaphoreData, const std::vector<uint32_t>& signalSemaphores, const uint32_t fence = UINT32_MAX) const;
+	void submit(const VulkanQueue& queue, const std::vector<std::pair<uint32_t, VkSemaphoreWaitFlags>>& waitSemaphoreData, const std::vector<uint32_t>& signalSemaphores, uint32_t fence = UINT32_MAX) const;
 	void reset() const;
 
 	void cmdBeginRenderPass(uint32_t renderPass, uint32_t frameBuffer, VkExtent2D extent, const std::vector<VkClearValue>& clearValues) const;
@@ -34,6 +34,7 @@ public:
 
 	void cmdCopyBuffer(uint32_t source, uint32_t destination, const std::vector<VkBufferCopy>& copyRegions) const;
 	void cmdPushConstant(uint32_t layout, VkShaderStageFlags stageFlags, uint32_t offset, uint32_t size, const void* pValues) const;
+    void cmdBindDescriptorSet(VkPipelineBindPoint bindPoint, uint32_t layout, uint32_t descriptorSet) const;
 
 	void cmdSetViewport(const VkViewport& viewport) const;
 	void cmdSetScissor(VkRect2D scissor) const;

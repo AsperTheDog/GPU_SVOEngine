@@ -19,7 +19,7 @@ public:
 private:
 	void createRenderPass();
 	void createGraphicsPipeline();
-	uint32_t createFramebuffer(VkImageView colorAttachment) const;
+	uint32_t createFramebuffer(const VkImageView colorAttachment, const VkExtent2D newExtent) const;
 	void initImgui() const;
 
 	void setupInputEvents();

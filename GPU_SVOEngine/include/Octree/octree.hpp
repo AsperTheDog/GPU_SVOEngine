@@ -4,6 +4,8 @@
 
 #include <glm/glm.hpp>
 
+
+
 // Helper classes
 
 class NearPtr
@@ -13,6 +15,8 @@ public:
 
 	[[nodiscard]] uint16_t getPtr() const;
 	[[nodiscard]] bool isFar() const;
+
+    [[nodiscard]] uint16_t toRaw() const;
 
 private:
 	uint16_t raw;
@@ -26,30 +30,36 @@ public:
 	[[nodiscard]] bool getBit(uint8_t index) const;
 	void setBit(uint8_t index, bool value);
 
+    [[nodiscard]] uint8_t toRaw() const;
+
 private:
 	uint8_t field;
 };
 
 // Octree classes
 
-union OctreeNode
-{
-	OctreeNode();
+struct BranchNode {
+    explicit BranchNode(uint32_t raw);
+    
+	NearPtr ptr{0, false};
+	BitField leafMask{0};
+	BitField childMask{0};
 
-	struct {
-		NearPtr ptr;
-		BitField childMask{0};
-		BitField leafMask{0};
-	} branch;
+    [[nodiscard]] uint32_t toRaw() const;
+};
 
-	struct {
-		uint8_t material;
-		glm::u8vec3 color;
-	} leaf;
+struct LeafNode {
+    explicit LeafNode(uint32_t raw);
 
-	struct {
-		uint32_t ptr;
-	} far;
+	glm::u8vec3 color{};
+	glm::u8vec3 normal{};
+	uint8_t material;
+
+    [[nodiscard]] uint32_t toRaw() const;
+};
+
+struct FarNode {
+	uint32_t ptr;
 };
 
 class Octree
@@ -57,16 +67,24 @@ class Octree
 public:
 	[[nodiscard]] size_t getSize() const;
 	[[nodiscard]] size_t getByteSize() const;
-	[[nodiscard]] OctreeNode& operator[](size_t index);
-	[[nodiscard]] const OctreeNode& operator[](size_t index) const;
+	[[nodiscard]] uint32_t& operator[](size_t index);
+    [[nodiscard]] uint32_t getFarPtr(size_t index) const;
 
-	void populateSample(uint8_t depth);
-	void addChild(OctreeNode child);
+    [[nodiscard]] uint8_t getDepth() const;
+
+	void populateSample(uint8_t maxDepth);
+    void pack();
+	void addChild(uint32_t child);
+	void addChild(BranchNode child);
+	void addChild(LeafNode child);
+	void addChild(FarNode child);
+    NearPtr pushFarPtr(size_t childPos);
 
 	void* getData();
 
 private:
-	std::vector<OctreeNode> data;
+	std::vector<uint32_t> data;
+    std::vector<uint32_t> farPtrs;
 	uint8_t depth = 0;
 };
 

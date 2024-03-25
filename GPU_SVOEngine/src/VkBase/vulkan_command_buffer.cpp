@@ -62,6 +62,13 @@ void VulkanCommandBuffer::cmdPushConstant(const uint32_t layout, const VkShaderS
 	vkCmdPushConstants(m_vkHandle, VulkanContext::getDevice(m_device).getPipelineLayout(layout).m_vkHandle, stageFlags, offset, size, pValues);
 }
 
+void VulkanCommandBuffer::cmdBindDescriptorSet(const VkPipelineBindPoint bindPoint, const uint32_t layout, const uint32_t descriptorSet) const
+{
+    const VkPipelineLayout vkLayout = *VulkanContext::getDevice(m_device).getPipelineLayout(layout);
+    const VkDescriptorSet vkDescriptorSet = *VulkanContext::getDevice(m_device).getDescriptorSet(descriptorSet);
+    vkCmdBindDescriptorSets(m_vkHandle, bindPoint, vkLayout, 0, 1, &vkDescriptorSet, 0, nullptr);
+}
+
 void VulkanCommandBuffer::submit(const VulkanQueue& queue, const std::vector<std::pair<uint32_t, VkSemaphoreWaitFlags>>& waitSemaphoreData, const std::vector<uint32_t>& signalSemaphores, const uint32_t fence) const
 {
 	if (m_isRecording)

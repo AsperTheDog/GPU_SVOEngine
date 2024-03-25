@@ -816,8 +816,12 @@ void VulkanDevice::freeSemaphore(const VulkanSemaphore& semaphore)
 
 uint32_t VulkanDevice::createShader(const std::string& filename, const VkShaderStageFlagBits stage)
 {
-	const VulkanShader::Result result = VulkanShader::compileFile(filename, VulkanShader::getKindFromStage(stage), VulkanShader::readFile(filename), true);
-
+    const VulkanShader::Result result = VulkanShader::compileFile(filename, VulkanShader::getKindFromStage(stage), VulkanShader::readFile(filename), 
+#ifdef _DEBUG
+	false);
+#else
+    true);
+#endif
 	if (result.code.empty())
 	{
 		std::cerr << "Failed to load shader:" << result.error << "\n";

@@ -10,7 +10,7 @@ class VulkanGPU;
 class VulkanContext : public VulkanBase
 {
 public:
-	static void init(uint32_t vulkanApiVersion, bool enableValidationLayers, const std::vector<const char*>& extensions);
+	static void init(uint32_t vulkanApiVersion, bool enableValidationLayers, std::vector<const char*> extensions);
 
 	static [[nodiscard]] std::vector<VulkanGPU> getGPUs();
 
@@ -24,10 +24,14 @@ public:
 	static VkInstance getHandle();
 
 private:
+    static void setupDebugMessenger();
+
 	inline static VkInstance m_vkHandle = VK_NULL_HANDLE;
 	inline static bool m_validationLayersEnabled = false;
 
 	inline static std::vector<VulkanDevice> m_devices{};
+
+    inline static VkDebugUtilsMessengerEXT m_debugMessenger = VK_NULL_HANDLE;
 
 	friend class SDLWindow;
 };

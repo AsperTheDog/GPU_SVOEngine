@@ -10,9 +10,9 @@ int main()
 	Engine engine{};
 
 	Octree octree;
-	octree.populateSample(6);
+	octree.populateSample(11);
 
-	engine.configureOctreeBuffer(octree);
+	engine.configureOctreeBuffer(octree, 200.0f);
 	engine.run();
 #ifndef _DEBUG
     }

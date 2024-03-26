@@ -3,6 +3,7 @@
 layout ( push_constant ) uniform PushConstants {
 	vec4 camPos;
     mat4 invPVMatrix;
+    float octreeScale;
 };
 
 layout(binding = 0) buffer MyBuffer {
@@ -141,11 +142,11 @@ uint getOctact(Ray ray)
 uint getNextChild(inout StackElem stackElem, uint octant)
 {
     BranchNode node = parseBranch(octree[stackElem.index]);
+    if (node.childMask == 0) return 8;
     while (stackElem.childCount < 8)
     {
         uint next = orders[octant][stackElem.childCount];
-        bool isValid = (node.childMask & (1 << next)) != 0;
-        if (isValid) return next;
+        if ((node.childMask & (1 << next)) != 0) return next;
         stackElem.childCount++;
     }
     return 8;
@@ -161,6 +162,19 @@ uint getMemoryPosOfChild(BranchNode node, uint child)
     return count;
 }
 
+uint getTrueAddress(BranchNode node)
+{
+    uint tail = octree.length() - 1;
+    if (node.farFlag == 0)
+    {
+        return node.address;
+    }
+    else
+    {
+        return octree[tail - node.address];
+    }
+}
+
 void traceRay(inout Ray ray)
 {
     StackElem[20] stack;
@@ -168,6 +182,7 @@ void traceRay(inout Ray ray)
     int stackPtr = 0;
 
     uint octant = getOctact(ray);
+    if (!intersect(ray, vec3(0), vec3(octreeScale))) return;
 
     while (true)
     {
@@ -177,14 +192,15 @@ void traceRay(inout Ray ray)
         {
             stackPtr--;
             if (stackPtr < 0) break;
+            stack[stackPtr].childCount++;
             continue;
         }
-        float size = pow(2.0, -(stackPtr + 1));
+        float size = pow(2.0, -(stackPtr + 1)) * octreeScale;
         vec3 pos = stack[stackPtr].pos + size * childPositions[current];
         if (intersect(ray, pos, pos + vec3(size)))
         {
             BranchNode parent = parseBranch(octree[stack[stackPtr].index]);
-            uint nextAddress = stack[stackPtr].index + parent.address + getMemoryPosOfChild(parent, current);
+            uint nextAddress = stack[stackPtr].index + getTrueAddress(parent) + getMemoryPosOfChild(parent, current);
             if ((parent.leafMask & (1 << current)) != 0)
             {
                 ray.coll = Collision(true, octree[nextAddress]);
@@ -221,10 +237,6 @@ void main() {
     }
     else
     {
-        vec3 color = vec3(0.0);
-        if (ray.direction.x > 0) color.x = 1.0;
-        if (ray.direction.y > 0) color.y = 1.0;
-        if (ray.direction.z > 0) color.z = 1.0;
-        outColor = vec4(color * 0.1, 1.0);
+        outColor = vec4(0.0, 0.0, 0.0, 1.0);
     }
 }

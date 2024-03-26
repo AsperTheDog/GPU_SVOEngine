@@ -13,6 +13,13 @@
 #include "Octree/octree.hpp"
 #include "VkBase/vulkan_context.hpp"
 
+struct PushConstantData
+{
+    glm::vec4 camPos;
+    glm::mat4 viewProj;
+    float scale;
+};
+
 VulkanGPU chooseCorrectGPU()
 {
 	const std::vector<VulkanGPU> gpus = VulkanContext::getGPUs();
@@ -98,7 +105,7 @@ Engine::~Engine()
 	VulkanContext::free();
 }
 
-void Engine::configureOctreeBuffer(Octree& octree)
+void Engine::configureOctreeBuffer(Octree& octree, float scale)
 {
 	{
 		if (m_octreeBuffer != UINT32_MAX)
@@ -154,6 +161,7 @@ void Engine::configureOctreeBuffer(Octree& octree)
 
 		VulkanContext::getDevice(m_deviceID).getDescriptorSet(m_octreeDescrSet).updateDescriptorSet(writeDescriptorSet);
 	}
+    m_octreeScale = scale;
 }
 
 void Engine::run()
@@ -203,7 +211,6 @@ void Engine::run()
 
 		graphicsBuffer.submit(graphicsQueue, {{m_imageAvailableSemaphoreID, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT}}, {m_renderFinishedSemaphoreID}, m_inFlightFenceID);
 
-
 		ImGui::UpdatePlatformWindows();
 		ImGui::RenderPlatformWindowsDefault();
 
@@ -241,7 +248,7 @@ void Engine::createGraphicsPipeline()
 	m_octreeDescrSetLayout = VulkanContext::getDevice(m_deviceID).createDescriptorSetLayout({octreeBinding}, 0);
 
 	std::vector<VkPushConstantRange> pushConstants{1};
-	pushConstants[0] = {VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(glm::vec4) + sizeof(glm::mat4)};
+	pushConstants[0] = {VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstantData)};
 	const uint32_t layout = VulkanContext::getDevice(m_deviceID).createPipelineLayout({m_octreeDescrSetLayout}, pushConstants);
 
 	const uint32_t vertexShader = VulkanContext::getDevice(m_deviceID).createShader("shaders/raytracing.vert", VK_SHADER_STAGE_VERTEX_BIT);
@@ -375,6 +382,7 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
 	const uint32_t layout = VulkanContext::getDevice(m_deviceID).getPipeline(m_pipelineID).getLayout();
 
 	const Camera::Data camData = cam.getData();
+    const PushConstantData pushConstants = {camData.position, camData.invPVMatrix, m_octreeScale};
 
 	VulkanCommandBuffer& graphicsBuffer = VulkanContext::getDevice(m_deviceID).getCommandBuffer(m_graphicsCmdBufferID, 0);
 	graphicsBuffer.reset();
@@ -388,7 +396,7 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
 		graphicsBuffer.cmdSetViewport(viewport);
 		graphicsBuffer.cmdSetScissor(scissor);
 
-		graphicsBuffer.cmdPushConstant(layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(camData), &camData);
+		graphicsBuffer.cmdPushConstant(layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pushConstants), &pushConstants);
 		graphicsBuffer.cmdDraw(6, 0);
 
 		ImGui_ImplVulkan_RenderDrawData(main_draw_data, *graphicsBuffer);

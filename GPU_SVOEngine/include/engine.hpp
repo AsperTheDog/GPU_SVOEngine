@@ -12,7 +12,7 @@ public:
 	Engine();
 	~Engine();
 
-	void configureOctreeBuffer(Octree& octree);
+	void configureOctreeBuffer(Octree& octree, float scale);
 
 	void run();
 
@@ -50,5 +50,6 @@ private:
 	uint32_t m_octreeDescrPool = UINT32_MAX;
 	uint32_t m_octreeDescrSetLayout = UINT32_MAX;
 	uint32_t m_octreeDescrSet = UINT32_MAX;
+    float m_octreeScale = 1.0f;
 };
 

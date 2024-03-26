@@ -105,7 +105,11 @@ void VulkanCommandBuffer::submit(const VulkanQueue& queue, const std::vector<std
 	submitInfo.signalSemaphoreCount = static_cast<uint32_t>(signalSemaphoresVk.size());
 	submitInfo.pSignalSemaphores = signalSemaphoresVk.data();
 
-	vkQueueSubmit(queue.m_vkHandle, 1, &submitInfo, fence != UINT32_MAX ? device.getFence(fence).m_vkHandle : VK_NULL_HANDLE);
+    const VkResult ret = vkQueueSubmit(queue.m_vkHandle, 1, &submitInfo, fence != UINT32_MAX ? device.getFence(fence).m_vkHandle : VK_NULL_HANDLE);
+    if (ret != VK_SUCCESS)
+    {
+        throw std::runtime_error("Failed to submit command buffer: " + std::to_string(ret));
+    }
 }
 
 void VulkanCommandBuffer::reset() const

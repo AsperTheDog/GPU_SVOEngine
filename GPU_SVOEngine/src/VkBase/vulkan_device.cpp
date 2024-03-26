@@ -368,7 +368,7 @@ void VulkanDevice::configureStagingBuffer(const VkDeviceSize size, const QueueSe
 	const std::optional<uint32_t> memoryType = m_memoryAllocator.getMemoryStructure().getStagingMemoryType(memRequirements.memoryTypeBits);
 	if (memoryType.has_value() && !m_memoryAllocator.isMemoryTypeHidden(memoryType.value()))
 	{
-		const uint32_t heapIndex = m_physicalDevice.getMemoryProperties().memoryTypes[memRequirements.memoryTypeBits].heapIndex;
+		const uint32_t heapIndex = m_physicalDevice.getMemoryProperties().memoryTypes[memoryType.value()].heapIndex;
 		const VkDeviceSize heapSize = m_physicalDevice.getMemoryProperties().memoryHeaps[heapIndex].size;
 		if (heapSize < size)
 		{

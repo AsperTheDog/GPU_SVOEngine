@@ -72,7 +72,8 @@ public:
 
     [[nodiscard]] uint8_t getDepth() const;
 
-	void populateSample(uint8_t maxDepth);
+    void preallocate(size_t size);
+    void populateSample(uint8_t maxDepth);
     void pack();
 	void addChild(uint32_t child);
 	void addChild(BranchNode child);
@@ -83,6 +84,9 @@ public:
 	void* getData();
 
 private:
+    uint32_t& get(size_t index);
+    bool populateRec(const unsigned long long parentPos, const unsigned char currentDepth, const unsigned char maxDepth, glm::vec3 color);
+
 	std::vector<uint32_t> data;
     std::vector<uint32_t> farPtrs;
 	uint8_t depth = 0;

@@ -15,12 +15,19 @@ class VulkanDevice;
 class MemoryStructure
 {
 public:
+    struct MemoryTypeData
+    {
+        VkMemoryPropertyFlags properties;
+        uint32_t heapIndex;
+        VkDeviceSize heapSize;
+    };
 
 	[[nodiscard]] std::string toString() const;
 
 	[[nodiscard]] std::optional<uint32_t> getStagingMemoryType(uint32_t typeFilter) const;
 	[[nodiscard]] std::vector<uint32_t> getMemoryTypes(VkMemoryPropertyFlags properties, uint32_t typeFilter) const;
 	[[nodiscard]] bool doesMemoryContainProperties(uint32_t type, VkMemoryPropertyFlags property) const;
+    MemoryTypeData getTypeData(uint32_t memoryType) const;
 
 private:
 	explicit MemoryStructure(VulkanGPU gpu);

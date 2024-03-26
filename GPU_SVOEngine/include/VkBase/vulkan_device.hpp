@@ -30,21 +30,25 @@ public:
 	uint32_t createOneTimeCommandBuffer(uint32_t threadID);
 	uint32_t getOrCreateCommandBuffer(const QueueFamily& family, uint32_t threadID, bool isSecondary);
 	VulkanCommandBuffer& getCommandBuffer(uint32_t id, uint32_t threadID);
+    [[nodiscard]] const VulkanCommandBuffer& getCommandBuffer(uint32_t id, uint32_t threadID) const;
 	void freeCommandBuffer(const VulkanCommandBuffer& commandBuffer, uint32_t threadID);
 	void freeCommandBuffer(uint32_t id, uint32_t threadID);
 
 	uint32_t createFramebuffer(VkExtent3D size, const VulkanRenderPass& renderPass, const std::vector<VkImageView>& attachments);
 	VulkanFramebuffer& getFramebuffer(uint32_t id);
+    [[nodiscard]] const VulkanFramebuffer& getFramebuffer(uint32_t id) const;
 	void freeFramebuffer(uint32_t id);
 	void freeFramebuffer(const VulkanFramebuffer& framebuffer);
 
 	uint32_t createBuffer(VkDeviceSize size, VkBufferUsageFlags usage);
 	VulkanBuffer& getBuffer(uint32_t id);
+	[[nodiscard]] const VulkanBuffer& getBuffer(uint32_t id) const;
 	void freeBuffer(uint32_t id);
 	void freeBuffer(const VulkanBuffer& buffer);
 
 	uint32_t createImage(VkImageType type, VkFormat format, VkExtent3D extent, VkImageUsageFlags usage, VkImageCreateFlags flags);
 	VulkanImage& getImage(uint32_t id);
+	[[nodiscard]] const VulkanImage& getImage(uint32_t id) const;
 	void freeImage(uint32_t id);
 	void freeImage(const VulkanImage& image);
 
@@ -53,54 +57,64 @@ public:
 
 	uint32_t createRenderPass(const VulkanRenderPassBuilder& builder, VkRenderPassCreateFlags flags);
 	VulkanRenderPass& getRenderPass(uint32_t id);
+	[[nodiscard]] const VulkanRenderPass& getRenderPass(uint32_t id) const;
 	void freeRenderPass(uint32_t id);
 	void freeRenderPass(const VulkanRenderPass& renderPass);
 
 	uint32_t createPipelineLayout(const std::vector<uint32_t>& descriptorSetLayouts, const std::vector<VkPushConstantRange>& pushConstantRanges);
 	VulkanPipelineLayout& getPipelineLayout(uint32_t id);
+    [[nodiscard]] const VulkanPipelineLayout& getPipelineLayout(uint32_t id) const;
 	void freePipelineLayout(uint32_t id);
 	void freePipelineLayout(const VulkanPipelineLayout& layout);
 
 	uint32_t createShader(const std::string& filename, VkShaderStageFlagBits stage);
 	VulkanShader& getShader(uint32_t id);
+    [[nodiscard]] const VulkanShader& getShader(uint32_t id) const;
 	void freeShader(uint32_t id);
 	void freeShader(const VulkanShader& shader);
 	void freeAllShaders();
 
 	uint32_t createPipeline(const VulkanPipelineBuilder& builder, uint32_t pipelineLayout, uint32_t renderPass, uint32_t subpass);
 	VulkanPipeline& getPipeline(uint32_t id);
+    [[nodiscard]] const VulkanPipeline& getPipeline(uint32_t id) const;
 	void freePipeline(uint32_t id);
 	void freePipeline(const VulkanPipeline& pipeline);
 
 	uint32_t createDescriptorPool(const std::vector<VkDescriptorPoolSize>& poolSizes, const uint32_t maxSets, const VkDescriptorPoolCreateFlags flags);
 	VulkanDescriptorPool& getDescriptorPool(uint32_t id);
+    [[nodiscard]] const VulkanDescriptorPool& getDescriptorPool(uint32_t id) const;
 	void freeDescriptorPool(uint32_t id);
 	void freeDescriptorPool(const VulkanDescriptorPool& descriptorPool);
 
 	uint32_t createDescriptorSetLayout(const std::vector<VkDescriptorSetLayoutBinding>& bindings, VkDescriptorSetLayoutCreateFlags flags);
 	VulkanDescriptorSetLayout& getDescriptorSetLayout(uint32_t id);
+    [[nodiscard]] const VulkanDescriptorSetLayout& getDescriptorSetLayout(uint32_t id) const;
 	void freeDescriptorSetLayout(uint32_t id);
 	void freeDescriptorSetLayout(const VulkanDescriptorSetLayout& layout);
 
 	uint32_t createDescriptorSet(uint32_t pool, uint32_t layout);
 	std::vector<uint32_t> createDescriptorSets(uint32_t pool, uint32_t layout, uint32_t count);
 	VulkanDescriptorSet& getDescriptorSet(uint32_t id);
+    [[nodiscard]] const VulkanDescriptorSet& getDescriptorSet(uint32_t id) const;
 	void freeDescriptorSet(uint32_t id);
 	void freeDescriptorSet(const VulkanDescriptorSet& descriptorSet);
 
 	uint32_t createSemaphore();
 	VulkanSemaphore& getSemaphore(uint32_t id);
+    [[nodiscard]] const VulkanSemaphore& getSemaphore(uint32_t id) const;
 	void freeSemaphore(uint32_t id);
 	void freeSemaphore(const VulkanSemaphore& semaphore);
 
 	uint32_t createFence(bool signaled);
 	VulkanFence& getFence(uint32_t id);
+    [[nodiscard]] const VulkanFence& getFence(uint32_t id) const;
 	void freeFence(uint32_t id);
 	void freeFence(const VulkanFence& fence);
 
 	void waitIdle() const;
 
 	[[nodiscard]] bool isStagingBufferConfigured() const;
+    [[nodiscard]] VkDeviceSize getStagingBufferSize() const;
 	void configureStagingBuffer(VkDeviceSize size, const QueueSelection& queue, bool forceAllowStagingMemory = false);
 	void freeStagingBuffer();
 	void* mapStagingBuffer(VkDeviceSize size, VkDeviceSize offset);
@@ -111,7 +125,6 @@ public:
 	[[nodiscard]] VulkanQueue getQueue(const QueueSelection& queueSelection) const;
 	[[nodiscard]] VulkanGPU getGPU() const;
 	[[nodiscard]] const VulkanMemoryAllocator& getMemoryAllocator() const;
-	[[nodiscard]] uint32_t getStagingBufferSemaphore() const;
 
 	VkDevice operator*() const;
 
@@ -160,7 +173,6 @@ private:
 	std::vector<VulkanFence> m_fences;
 
 	VulkanMemoryAllocator m_memoryAllocator;
-	uint32_t m_stagingSemaphore = UINT32_MAX;
 	QueueSelection m_oneTimeQueue{UINT32_MAX, UINT32_MAX};
 
 	friend class VulkanContext;

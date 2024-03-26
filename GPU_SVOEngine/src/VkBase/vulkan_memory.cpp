@@ -69,6 +69,15 @@ bool MemoryStructure::doesMemoryContainProperties(const uint32_t type, const VkM
 	return (m_memoryProperties.memoryTypes[type].propertyFlags & property) == property;
 }
 
+MemoryStructure::MemoryTypeData MemoryStructure::getTypeData(const uint32_t memoryType) const
+{
+    return {
+        m_memoryProperties.memoryTypes[memoryType].propertyFlags,
+        m_memoryProperties.memoryTypes[memoryType].heapIndex,
+        m_memoryProperties.memoryHeaps[m_memoryProperties.memoryTypes[memoryType].heapIndex].size
+    };
+}
+
 MemoryStructure::MemoryStructure(const VulkanGPU gpu)
 {
 	vkGetPhysicalDeviceMemoryProperties(gpu.m_vkHandle, &m_memoryProperties);
@@ -262,9 +271,9 @@ MemoryChunk::MemoryBlock VulkanMemoryAllocator::allocate(const VkDeviceSize size
 	allocInfo.memoryTypeIndex = memoryType;
 
 	VkDeviceMemory memory;
-	if (vkAllocateMemory(VulkanContext::getDevice(m_device).m_vkHandle, &allocInfo, nullptr, &memory) != VK_SUCCESS)
+	if (const VkResult ret = vkAllocateMemory(VulkanContext::getDevice(m_device).m_vkHandle, &allocInfo, nullptr, &memory); ret != VK_SUCCESS)
 	{
-		throw std::runtime_error("Failed to allocate memory");
+		throw std::runtime_error(std::string("Failed to allocate memory, error: ") + string_VkResult(ret));
 	}
 
 	m_memoryChunks.push_back(MemoryChunk(chunkSize, memoryType, memory));

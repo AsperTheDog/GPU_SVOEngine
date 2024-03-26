@@ -24,11 +24,6 @@ const VulkanMemoryAllocator& VulkanDevice::getMemoryAllocator() const
 	return m_memoryAllocator;
 }
 
-uint32_t VulkanDevice::getStagingBufferSemaphore() const
-{
-	return m_stagingSemaphore;
-}
-
 VkDevice VulkanDevice::operator*() const
 {
 	return m_vkHandle;
@@ -169,6 +164,11 @@ VulkanCommandBuffer& VulkanDevice::getCommandBuffer(const uint32_t id, const uin
 	throw std::runtime_error("Command buffer not found");
 }
 
+const VulkanCommandBuffer& VulkanDevice::getCommandBuffer(const uint32_t id, const uint32_t threadID) const
+{
+    return const_cast<VulkanDevice*>(this)->getCommandBuffer(id, threadID);
+}
+
 void VulkanDevice::freeCommandBuffer(const VulkanCommandBuffer& commandBuffer, const uint32_t threadID)
 {
 	freeCommandBuffer(commandBuffer.m_id, threadID);
@@ -222,6 +222,11 @@ VulkanFramebuffer& VulkanDevice::getFramebuffer(const uint32_t id)
 	throw std::runtime_error("Framebuffer not found");
 }
 
+const VulkanFramebuffer& VulkanDevice::getFramebuffer(const uint32_t id) const
+{
+    return const_cast<VulkanDevice*>(this)->getFramebuffer(id);
+}
+
 void VulkanDevice::freeFramebuffer(const uint32_t id)
 {
 	for (auto it = m_framebuffers.begin(); it != m_framebuffers.end(); ++it)
@@ -272,6 +277,11 @@ VulkanBuffer& VulkanDevice::getBuffer(const uint32_t id)
 		}
 	}
 	throw std::runtime_error("Buffer not found");
+}
+
+const VulkanBuffer& VulkanDevice::getBuffer(const uint32_t id) const
+{
+    return const_cast<VulkanDevice*>(this)->getBuffer(id);
 }
 
 void VulkanDevice::freeBuffer(const uint32_t id)
@@ -334,6 +344,11 @@ VulkanImage& VulkanDevice::getImage(const uint32_t id)
 	throw std::runtime_error("Image not found");
 }
 
+const VulkanImage& VulkanDevice::getImage(const uint32_t id) const
+{
+    return const_cast<VulkanDevice*>(this)->getImage(id);
+}
+
 void VulkanDevice::freeImage(const uint32_t id)
 {
 	for (auto it = m_images.begin(); it != m_images.end(); ++it)
@@ -354,11 +369,10 @@ void VulkanDevice::freeImage(const VulkanImage& image)
 
 void VulkanDevice::configureStagingBuffer(const VkDeviceSize size, const QueueSelection& queue, const bool forceAllowStagingMemory)
 {
-	if (m_stagingBufferInfo.stagingBuffer != UINT32_MAX)
+    if (m_stagingBufferInfo.stagingBuffer != UINT32_MAX)
 	{
 		freeStagingBuffer();
 	}
-
 	m_stagingBufferInfo.stagingBuffer = createBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
 
 	m_stagingBufferInfo.queue = queue;
@@ -370,7 +384,7 @@ void VulkanDevice::configureStagingBuffer(const VkDeviceSize size, const QueueSe
 	{
 		const uint32_t heapIndex = m_physicalDevice.getMemoryProperties().memoryTypes[memoryType.value()].heapIndex;
 		const VkDeviceSize heapSize = m_physicalDevice.getMemoryProperties().memoryHeaps[heapIndex].size;
-		if (heapSize < size)
+		if (heapSize < size * 0.8)
 		{
 			stagingBuffer.allocateFromFlags({VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VK_MEMORY_PROPERTY_HOST_CACHED_BIT, true});
 			return;
@@ -383,6 +397,12 @@ void VulkanDevice::configureStagingBuffer(const VkDeviceSize size, const QueueSe
 	{
 		stagingBuffer.allocateFromFlags({VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VK_MEMORY_PROPERTY_HOST_CACHED_BIT, true});
 	}
+}
+
+VkDeviceSize VulkanDevice::getStagingBufferSize() const
+{
+    if (m_stagingBufferInfo.stagingBuffer == UINT32_MAX) return 0;
+    return getBuffer(m_stagingBufferInfo.stagingBuffer).getSize();
 }
 
 void VulkanDevice::freeStagingBuffer()
@@ -411,14 +431,14 @@ void VulkanDevice::unmapStagingBuffer()
 
 void VulkanDevice::dumpStagingBuffer(const uint32_t buffer, const VkDeviceSize size, const VkDeviceSize offset, const uint32_t threadID)
 {
-	dumpStagingBuffer(buffer, {{offset, 0, size}}, threadID);
+	dumpStagingBuffer(buffer, {{0, offset, size}}, threadID);
 }
 
 void VulkanDevice::dumpStagingBuffer(const uint32_t buffer, const std::vector<VkBufferCopy>& regions, const uint32_t threadID)
 {
 	VulkanBuffer& stagingBuffer = getBuffer(m_stagingBufferInfo.stagingBuffer);
 	if (stagingBuffer.m_vkHandle == VK_NULL_HANDLE)
-		throw std::runtime_error("Staging buffer not configured");
+		throw std::runtime_error("Tried to dump staging buffer data, but staging buffer is not configured");
 
 	if (stagingBuffer.isMemoryMapped())
 	{
@@ -432,7 +452,7 @@ void VulkanDevice::dumpStagingBuffer(const uint32_t buffer, const std::vector<Vk
 	commandBuffer.cmdCopyBuffer(m_stagingBufferInfo.stagingBuffer, buffer, regions);
 	commandBuffer.endRecording();
 	const VulkanQueue queue = getQueue(m_stagingBufferInfo.queue);
-	commandBuffer.submit(queue, {}, {m_stagingSemaphore});
+	commandBuffer.submit(queue, {}, {});
 	
 	queue.waitIdle();
 	freeCommandBuffer(commandBuffer, threadID);
@@ -502,6 +522,11 @@ VulkanRenderPass& VulkanDevice::getRenderPass(const uint32_t id)
 	throw std::runtime_error("Render pass not found");
 }
 
+const VulkanRenderPass& VulkanDevice::getRenderPass(const uint32_t id) const
+{
+    return const_cast<VulkanDevice*>(this)->getRenderPass(id);
+}
+
 void VulkanDevice::freeRenderPass(const uint32_t id)
 {
 	for (auto it = m_renderPasses.begin(); it != m_renderPasses.end(); ++it)
@@ -556,6 +581,11 @@ VulkanPipelineLayout& VulkanDevice::getPipelineLayout(const uint32_t id)
 		}
 	}
 	throw std::runtime_error("Pipeline layout not found");
+}
+
+const VulkanPipelineLayout& VulkanDevice::getPipelineLayout(const uint32_t id) const
+{
+    return const_cast<VulkanDevice*>(this)->getPipelineLayout(id);
 }
 
 void VulkanDevice::freePipelineLayout(const uint32_t id)
@@ -855,6 +885,41 @@ VulkanShader& VulkanDevice::getShader(const uint32_t id)
 	throw std::runtime_error("Shader not found");
 }
 
+const VulkanShader& VulkanDevice::getShader(const uint32_t id) const
+{
+    return const_cast<VulkanDevice*>(this)->getShader(id);
+}
+
+const VulkanPipeline& VulkanDevice::getPipeline(const uint32_t id) const
+{
+    return const_cast<VulkanDevice*>(this)->getPipeline(id);
+}
+
+const VulkanDescriptorPool& VulkanDevice::getDescriptorPool(const uint32_t id) const
+{
+    return const_cast<VulkanDevice*>(this)->getDescriptorPool(id);
+}
+
+const VulkanDescriptorSetLayout& VulkanDevice::getDescriptorSetLayout(const uint32_t id) const
+{
+    return const_cast<VulkanDevice*>(this)->getDescriptorSetLayout(id);
+}
+
+const VulkanDescriptorSet& VulkanDevice::getDescriptorSet(const uint32_t id) const
+{
+    return const_cast<VulkanDevice*>(this)->getDescriptorSet(id);
+}
+
+const VulkanSemaphore& VulkanDevice::getSemaphore(const uint32_t id) const
+{
+    return const_cast<VulkanDevice*>(this)->getSemaphore(id);
+}
+
+const VulkanFence& VulkanDevice::getFence(const uint32_t id) const
+{
+    return const_cast<VulkanDevice*>(this)->getFence(id);
+}
+
 void VulkanDevice::freeShader(const uint32_t id)
 {
 	for (auto it = m_shaders.begin(); it != m_shaders.end(); ++it)
@@ -1076,7 +1141,7 @@ VkDeviceMemory VulkanDevice::getMemoryHandle(const uint32_t chunkID) const
 }
 
 VulkanDevice::VulkanDevice(const VulkanGPU pDevice, const VkDevice device)
-	: m_vkHandle(device), m_physicalDevice(pDevice), m_memoryAllocator(*this), m_stagingSemaphore(createSemaphore())
+	: m_vkHandle(device), m_physicalDevice(pDevice), m_memoryAllocator(*this)
 {
 
 }

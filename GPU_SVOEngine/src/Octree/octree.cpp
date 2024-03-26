@@ -1,5 +1,7 @@
 #include "Octree/octree.hpp"
 
+#include "camera.hpp"
+#include "camera.hpp"
 #include "logger.hpp"
 
 glm::vec3 childPositions[] = {
@@ -121,42 +123,46 @@ uint8_t Octree::getDepth() const
     return depth;
 }
 
-glm::u8vec3 shiftColor(const glm::u8vec3 color)
+void Octree::preallocate(const size_t size)
 {
-    int r = std::min(std::max(color.r + (rand() % 2 == 0 ? 1 : -1), 0), 15);
-    int g = std::min(std::max(color.g + (rand() % 2 == 0 ? 1 : -1), 0), 15);
-    int b = std::min(std::max(color.b + (rand() % 2 == 0 ? 1 : -1), 0), 15);
+    data.reserve(size);
+}
+
+glm::vec3 shiftColor(const glm::vec3 color)
+{
+    float r = std::min(std::max(color.r + (rand() % 2 == 0 ? 0.4f : -0.4f), 0.0f), 15.0f);
+    float g = std::min(std::max(color.g + (rand() % 2 == 0 ? 0.4f : -0.4f), 0.0f), 15.0f);
+    float b = std::min(std::max(color.b + (rand() % 2 == 0 ? 0.4f : -0.4f), 0.0f), 15.0f);
     return {r, g, b};
 }
 
-bool populateRec(Octree& octree, const size_t parentPos, const uint8_t currentDepth, const uint8_t maxDepth, const uint8_t octant, glm::u8vec3 color)
+bool Octree::populateRec(const size_t parentPos, const uint8_t currentDepth, const uint8_t maxDepth, glm::vec3 color)
 {
+    static uint64_t voxels = 0;
 	if (currentDepth >= maxDepth)
 	{
         LeafNode leaf{0};
-        //leaf.color = {static_cast<uint8_t>(rand() % 15), static_cast<uint8_t>(rand() % 15), static_cast<uint8_t>(rand() % 15)};
         leaf.color = color;
         leaf.normal = {0, 0, 0};
 	    leaf.material = 0;
-	    octree[parentPos] = leaf.toRaw();
-        //Logger::print("Leaf at " + std::to_string(parentPos) + " with color " + std::to_string(leaf.color.r) + " " + std::to_string(leaf.color.g) + " " + std::to_string(leaf.color.b) + " for octant " + std::to_string(octant));
-	    return true;
+	    get(parentPos) = leaf.toRaw();
+        voxels++;
+        return true;
 	}
 
-    const size_t childIdx = octree.getSize() - parentPos;
+    const size_t childIdx = getSize() - parentPos;
 	bool hasChildren = false;
-    BranchNode parent = BranchNode(octree[parentPos]);
+    BranchNode parent = BranchNode(get(parentPos));
     for (uint8_t i = 0; i < 8; i++)
 	{
-		if ((static_cast<float>(rand()) / RAND_MAX) > 0.6)
+		if ((static_cast<float>(rand()) / RAND_MAX) > 0.7)
 		{
 			continue;
 		}
 
 		hasChildren = true;
-		octree.addChild(0);
+		addChild(0);
 		parent.childMask.setBit(i, true);
-        //Logger::print("Adding child at " + std::to_string(octree.getSize() - 1) + " with parent " + std::to_string(parentPos));
 	}
 
     
@@ -165,7 +171,7 @@ bool populateRec(Octree& octree, const size_t parentPos, const uint8_t currentDe
         NearPtr childPtr{0, false};
         if (childIdx > 0x7FFF)
         {
-            childPtr = octree.pushFarPtr(childIdx);
+            childPtr = pushFarPtr(childIdx);
         }
         else
         {
@@ -175,18 +181,8 @@ bool populateRec(Octree& octree, const size_t parentPos, const uint8_t currentDe
 	}
 	else
 	{
-        //Logger::print("Parent " + std::to_string(parentPos) + " has no children");
 	    return false;
 	}
-
-    //if (parent.ptr.isFar())
-    //{
-    //    Logger::print("Parent " + std::to_string(parentPos) + " is far and points to the farPtr " + std::to_string(parent.ptr.getPtr()) +  " (" + std::to_string(octree.getFarPtr(parent.ptr.getPtr())) + ")");
-    //}
-    //else
-    //{
-    //    Logger::print("Parent " + std::to_string(parentPos) + " is near and points to " + std::to_string(parent.ptr.getPtr()));
-    //}
     
 	uint8_t count = 0;
 	for (uint8_t i = 0; i < 8; i++)
@@ -197,13 +193,24 @@ bool populateRec(Octree& octree, const size_t parentPos, const uint8_t currentDe
 		}
 
         color = shiftColor(color);
-		if (populateRec(octree, parentPos + childIdx + count, currentDepth + 1, maxDepth, i, color))
+		if (populateRec(parentPos + childIdx + count, currentDepth + 1, maxDepth, color))
 		{
 			parent.leafMask.setBit(i, true);
 		}
 		++count;
 	}
-    octree[parentPos] = parent.toRaw();
+    get(parentPos) = parent.toRaw();
+
+    if (currentDepth == 0)
+    {
+        Logger::print("Octree built");
+        const float percentage = static_cast<float>(voxels) / static_cast<float>(pow(8, maxDepth - 1)) * 100.0f;
+        Logger::print(" - Voxels: " + std::to_string(voxels) + " (" + std::to_string(static_cast<uint64_t>(percentage)) + "% dense)");
+        Logger::print(" - Nodes: " + std::to_string(getSize()));
+        Logger::print(" - Bytes: " + std::to_string(getByteSize()));
+        Logger::print(" - Depth: " + std::to_string(maxDepth));
+        Logger::print(" - Far pointers: " + std::to_string(farPtrs.size()));
+    }
 
 	return false;
 }
@@ -212,7 +219,7 @@ void Octree::populateSample(const uint8_t maxDepth)
 {
     Logger::pushContext("Octree population");
 	addChild(0);
-	populateRec(*this, 0, 0, maxDepth, 0, glm::u8vec3(7, 7, 7));
+	populateRec(0, 0, maxDepth, glm::u8vec3(8, 3, 8));
     pack();
     Logger::popContext();
 }
@@ -254,4 +261,9 @@ NearPtr Octree::pushFarPtr(const size_t childPos)
 void* Octree::getData()
 {
 	return data.data();
+}
+
+uint32_t& Octree::get(const size_t index)
+{
+    return data[index];
 }

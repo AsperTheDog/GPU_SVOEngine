@@ -105,7 +105,7 @@ Engine::~Engine()
 	VulkanContext::free();
 }
 
-void Engine::configureOctreeBuffer(Octree& octree, float scale)
+void Engine::configureOctreeBuffer(Octree& octree, const float scale)
 {
 	{
 		if (m_octreeBuffer != UINT32_MAX)
@@ -123,12 +123,20 @@ void Engine::configureOctreeBuffer(Octree& octree, float scale)
 		if (!VulkanContext::getDevice(m_deviceID).isStagingBufferConfigured())
 		{
 			transientConfig = true;
-			VulkanContext::getDevice(m_deviceID).configureStagingBuffer(bufferSize, m_transferQueuePos);
+			VulkanContext::getDevice(m_deviceID).configureStagingBuffer(100LL * 1024 * 1024, m_transferQueuePos);
 		}
 		{
-			void* stagePtr = VulkanContext::getDevice(m_deviceID).mapStagingBuffer(bufferSize, 0);
-			memcpy(stagePtr, octree.getData(), bufferSize);
-			VulkanContext::getDevice(m_deviceID).dumpStagingBuffer(m_octreeBuffer, bufferSize, 0, 0);
+            size_t offset = 0;
+            const VkDeviceSize stagingBufferSize = VulkanContext::getDevice(m_deviceID).getStagingBufferSize();
+            while (offset < octree.getByteSize())
+            {
+                const VkDeviceSize nextSize = std::min(stagingBufferSize, octree.getByteSize() - offset);
+                void* stagePtr = VulkanContext::getDevice(m_deviceID).mapStagingBuffer(nextSize, 0);
+			    memcpy(stagePtr, static_cast<char*>(octree.getData()) + offset, nextSize);
+			    VulkanContext::getDevice(m_deviceID).dumpStagingBuffer(m_octreeBuffer, nextSize, offset, 0);
+                offset += nextSize;
+            }
+			
 		}
 		if (transientConfig)
 		{

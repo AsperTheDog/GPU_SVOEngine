@@ -8,10 +8,10 @@
 #include <glm/vec3.hpp>
 
 #include "imgui_internal.h"
-#include "logger.hpp"
+#include "utils/logger.hpp"
 #include "backends/imgui_impl_vulkan.h"
 #include "Octree/octree.hpp"
-#include "VkBase/vulkan_context.hpp"
+#include "vulkan_context.hpp"
 
 struct PushConstantData
 {
@@ -38,9 +38,9 @@ Engine::Engine() : cam({0, 0, 0}, {0, 0, 0}), m_window("Vulkan", 1920, 1080)
 {
 	Logger::setRootContext("Engine init");
 #ifndef _DEBUG
-	VulkanContext::init(VK_API_VERSION_1_3, false, m_window.getRequiredVulkanExtensions());
+	VulkanContext::init(VK_API_VERSION_1_3, false, false, m_window.getRequiredVulkanExtensions());
 #else
-	VulkanContext::init(VK_API_VERSION_1_3, true, m_window.getRequiredVulkanExtensions());
+	VulkanContext::init(VK_API_VERSION_1_3, true, false, m_window.getRequiredVulkanExtensions());
 #endif
 	m_window.createSurface();
 
@@ -63,7 +63,7 @@ Engine::Engine() : cam({0, 0, 0}, {0, 0, 0}), m_window("Vulkan", 1920, 1080)
 	m_deviceID = VulkanContext::createDevice(gpu, selector, {VK_KHR_SWAPCHAIN_EXTENSION_NAME}, {});
 	VulkanDevice& device = VulkanContext::getDevice(m_deviceID);
 
-	m_window.createSwapchain(m_deviceID, {VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR});
+	m_window.createSwapchain(m_deviceID, {VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR}, VK_PRESENT_MODE_FIFO_KHR);
 
 	device.configureOneTimeQueue(m_transferQueuePos);
 	m_graphicsCmdBufferID = device.createCommandBuffer(graphicsQueueFamily, 0, false);
@@ -179,7 +179,7 @@ void Engine::run()
 
 	const VulkanQueue graphicsQueue = device.getQueue(m_graphicsQueuePos);
 	const VulkanQueue presentQueue = device.getQueue(m_presentQueuePos);
-	const VulkanCommandBuffer& graphicsBuffer = device.getCommandBuffer(m_graphicsCmdBufferID, 0);
+	VulkanCommandBuffer& graphicsBuffer = device.getCommandBuffer(m_graphicsCmdBufferID, 0);
 
 	uint64_t frameCounter = 0;
 

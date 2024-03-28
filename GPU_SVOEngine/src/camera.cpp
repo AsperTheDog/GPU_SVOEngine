@@ -1,6 +1,5 @@
 #include "camera.hpp"
 
-#include <iostream>
 #include <glm/gtx/transform.hpp>
 
 #include <SDL2/SDL_keycode.h>

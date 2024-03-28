@@ -1,8 +1,7 @@
 #include "Octree/octree.hpp"
 
 #include "camera.hpp"
-#include "camera.hpp"
-#include "logger.hpp"
+#include "utils/logger.hpp"
 
 glm::vec3 childPositions[] = {
     glm::vec3(0, 0, 0),
@@ -203,13 +202,13 @@ bool Octree::populateRec(const size_t parentPos, const uint8_t currentDepth, con
 
     if (currentDepth == 0)
     {
-        Logger::print("Octree built");
+        Logger::print("Octree built", Logger::Levels::DEBUG);
         const float percentage = static_cast<float>(voxels) / static_cast<float>(pow(8, maxDepth - 1)) * 100.0f;
-        Logger::print(" - Voxels: " + std::to_string(voxels) + " (" + std::to_string(static_cast<uint64_t>(percentage)) + "% dense)");
-        Logger::print(" - Nodes: " + std::to_string(getSize()));
-        Logger::print(" - Bytes: " + std::to_string(getByteSize()));
-        Logger::print(" - Depth: " + std::to_string(maxDepth));
-        Logger::print(" - Far pointers: " + std::to_string(farPtrs.size()));
+        Logger::print(" - Voxels: " + std::to_string(voxels) + " (" + std::to_string(static_cast<uint64_t>(percentage)) + "% dense)", Logger::Levels::DEBUG);
+        Logger::print(" - Nodes: " + std::to_string(getSize()), Logger::Levels::DEBUG);
+        Logger::print(" - Bytes: " + std::to_string(getByteSize()), Logger::Levels::DEBUG);
+        Logger::print(" - Depth: " + std::to_string(maxDepth), Logger::Levels::DEBUG);
+        Logger::print(" - Far pointers: " + std::to_string(farPtrs.size()), Logger::Levels::DEBUG);
     }
 
 	return false;

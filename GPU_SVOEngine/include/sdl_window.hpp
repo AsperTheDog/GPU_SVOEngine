@@ -5,7 +5,7 @@
 #include <SDL2/SDL_keycode.h>
 #include <vulkan/vulkan_core.h>
 
-#include "signal.hpp"
+#include "utils/signal.hpp"
 
 class VulkanFence;
 class VulkanDevice;
@@ -41,7 +41,7 @@ public:
 	void toggleMouseCapture();
 
 	void createSurface();
-	void createSwapchain(uint32_t deviceID, VkSurfaceFormatKHR desiredFormat);
+	void createSwapchain(const uint32_t deviceID, const VkSurfaceFormatKHR desiredFormat, const VkPresentModeKHR presentMode);
 
 	[[nodiscard]] uint32_t acquireNextImage(uint32_t semaphoreID, const VulkanFence* fence = nullptr) const;
 	[[nodiscard]] VkImageView getImageView(uint32_t index) const;
@@ -72,6 +72,7 @@ private:
 		std::vector<VkImage> images;
 		std::vector<VkImageView> imageViews;
 		uint32_t minImageCount = 0;
+        VkPresentModeKHR presentMode;
 		bool rebuilt = false;
 	};
 
@@ -96,7 +97,7 @@ private:
 	void freeSwapchain();
 	void rebuildSwapchain(VkExtent2D newExtent);
 
-	void _createSwapchain(uint32_t deviceID, VkExtent2D size, VkSurfaceFormatKHR format);
+	void _createSwapchain(const uint32_t deviceID, const VkExtent2D size, const VkSurfaceFormatKHR format, VkPresentModeKHR presentMode);
 
 	friend class Surface;
 	friend class VulkanGPU;

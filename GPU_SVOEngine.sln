@@ -5,10 +5,13 @@ VisualStudioVersion = 17.8.34525.116
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "GPU_SVOEngine", "GPU_SVOEngine\GPU_SVOEngine.vcxproj", "{42534C9D-FDF8-4978-8C10-DB0EE83104AC}"
 	ProjectSection(ProjectDependencies) = postProject
+		{1E2D7D1B-7FFD-4D00-B16D-E72B320E12C4} = {1E2D7D1B-7FFD-4D00-B16D-E72B320E12C4}
 		{2384C8C7-A1B3-4DBB-853D-70BA578334B7} = {2384C8C7-A1B3-4DBB-853D-70BA578334B7}
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ImGui", "ImGui\ImGui.vcxproj", "{2384C8C7-A1B3-4DBB-853D-70BA578334B7}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VkPlayground", "VkPlayground\VkPlayground.vcxproj", "{1E2D7D1B-7FFD-4D00-B16D-E72B320E12C4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -34,6 +37,14 @@ Global
 		{2384C8C7-A1B3-4DBB-853D-70BA578334B7}.Release|x64.Build.0 = Release|x64
 		{2384C8C7-A1B3-4DBB-853D-70BA578334B7}.Release|x86.ActiveCfg = Release|Win32
 		{2384C8C7-A1B3-4DBB-853D-70BA578334B7}.Release|x86.Build.0 = Release|Win32
+		{1E2D7D1B-7FFD-4D00-B16D-E72B320E12C4}.Debug|x64.ActiveCfg = Debug|x64
+		{1E2D7D1B-7FFD-4D00-B16D-E72B320E12C4}.Debug|x64.Build.0 = Debug|x64
+		{1E2D7D1B-7FFD-4D00-B16D-E72B320E12C4}.Debug|x86.ActiveCfg = Debug|Win32
+		{1E2D7D1B-7FFD-4D00-B16D-E72B320E12C4}.Debug|x86.Build.0 = Debug|Win32
+		{1E2D7D1B-7FFD-4D00-B16D-E72B320E12C4}.Release|x64.ActiveCfg = Release|x64
+		{1E2D7D1B-7FFD-4D00-B16D-E72B320E12C4}.Release|x64.Build.0 = Release|x64
+		{1E2D7D1B-7FFD-4D00-B16D-E72B320E12C4}.Release|x86.ActiveCfg = Release|Win32
+		{1E2D7D1B-7FFD-4D00-B16D-E72B320E12C4}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -1,5 +1,5 @@
 #include "engine.hpp"
-#include "logger.hpp"
+#include "utils/logger.hpp"
 #include "Octree/octree.hpp"
 
 int main()
@@ -11,14 +11,14 @@ int main()
 
 	Octree octree;
     octree.preallocate(400LL * 1024 * 1024);
-	octree.populateSample(11);
+	octree.populateSample(9);
 
 	engine.configureOctreeBuffer(octree, 200.0f);
 	engine.run();
 #ifndef _DEBUG
     }
     catch (const std::exception& e) {
-        Logger::print(std::string("[RUNTIME ERROR] ") + e.what());
+        Logger::print(std::string("[RUNTIME ERROR] ") + e.what(), Logger::Levels::ERR);
         return EXIT_FAILURE;
     }
 #endif

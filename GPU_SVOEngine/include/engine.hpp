@@ -1,8 +1,8 @@
 #pragma once
 #include "camera.hpp"
 #include "imgui.h"
-#include "VkBase/sdl_window.hpp"
-#include "VkBase/vulkan_queues.hpp"
+#include "sdl_window.hpp"
+#include "vulkan_queues.hpp"
 
 class Octree;
 

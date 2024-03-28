@@ -83,9 +83,11 @@ public:
 
 	void* getData();
 
+    void clear();
+
 private:
     uint32_t& get(size_t index);
-    bool populateRec(const unsigned long long parentPos, const unsigned char currentDepth, const unsigned char maxDepth, glm::vec3 color);
+    bool populateRec(uint64_t parentPos, uint8_t currentDepth, uint8_t maxDepth, glm::vec3 color);
 
 	std::vector<uint32_t> data;
     std::vector<uint32_t> farPtrs;

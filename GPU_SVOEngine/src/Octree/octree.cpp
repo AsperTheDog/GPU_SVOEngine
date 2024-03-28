@@ -202,13 +202,13 @@ bool Octree::populateRec(const size_t parentPos, const uint8_t currentDepth, con
 
     if (currentDepth == 0)
     {
-        Logger::print("Octree built", Logger::Levels::DEBUG);
+        Logger::print("Octree built", Logger::LevelBits::DEBUG);
         const float percentage = static_cast<float>(voxels) / static_cast<float>(pow(8, maxDepth - 1)) * 100.0f;
-        Logger::print(" - Voxels: " + std::to_string(voxels) + " (" + std::to_string(static_cast<uint64_t>(percentage)) + "% dense)", Logger::Levels::DEBUG);
-        Logger::print(" - Nodes: " + std::to_string(getSize()), Logger::Levels::DEBUG);
-        Logger::print(" - Bytes: " + std::to_string(getByteSize()), Logger::Levels::DEBUG);
-        Logger::print(" - Depth: " + std::to_string(maxDepth), Logger::Levels::DEBUG);
-        Logger::print(" - Far pointers: " + std::to_string(farPtrs.size()), Logger::Levels::DEBUG);
+        Logger::print(" - Voxels: " + std::to_string(voxels) + " (" + std::to_string(static_cast<uint64_t>(percentage)) + "% dense)", Logger::LevelBits::DEBUG);
+        Logger::print(" - Nodes: " + std::to_string(getSize()), Logger::LevelBits::DEBUG);
+        Logger::print(" - Bytes: " + std::to_string(getByteSize()), Logger::LevelBits::DEBUG);
+        Logger::print(" - Depth: " + std::to_string(maxDepth), Logger::LevelBits::DEBUG);
+        Logger::print(" - Far pointers: " + std::to_string(farPtrs.size()), Logger::LevelBits::DEBUG);
     }
 
 	return false;
@@ -260,6 +260,13 @@ NearPtr Octree::pushFarPtr(const size_t childPos)
 void* Octree::getData()
 {
 	return data.data();
+}
+
+void Octree::clear()
+{
+    data.clear();
+    farPtrs.clear();
+    depth = 0;
 }
 
 uint32_t& Octree::get(const size_t index)

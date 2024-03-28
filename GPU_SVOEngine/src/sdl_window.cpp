@@ -127,7 +127,7 @@ void SDLWindow::createSwapchain(const uint32_t deviceID, const VkSurfaceFormatKH
 	if (m_swapchain.swapchain != nullptr)
 	{
 		freeSwapchain();
-		Logger::print("Swapchain already created, freed old swapchain", Logger::Levels::WARN);
+		Logger::print("Swapchain already created, freed old swapchain", Logger::LevelBits::WARN);
 	}
 
 	const VkSurfaceFormatKHR selectedFormat = VulkanContext::getDevice(deviceID).getGPU().getClosestFormat(m_surface, desiredFormat);
@@ -261,7 +261,7 @@ void SDLWindow::freeSwapchain()
 		m_swapchain.images.clear();
 		vkDestroySwapchainKHR(device.m_vkHandle, m_swapchain.swapchain, nullptr);
 		m_swapchain.swapchain = nullptr;
-		Logger::print("Freed swapchain", Logger::Levels::INFO);
+		Logger::print("Freed swapchain", Logger::LevelBits::INFO);
 	}
 }
 
@@ -306,7 +306,7 @@ void SDLWindow::_createSwapchain(const uint32_t deviceID, const VkExtent2D size,
 
 	if (vkCreateSwapchainKHR(device.m_vkHandle, &createInfo, nullptr, &m_swapchain.swapchain) != VK_SUCCESS)
 		throw std::runtime_error("failed to create swap chain!");
-	Logger::print("Created swapchain", Logger::Levels::INFO);
+	Logger::print("Created swapchain", Logger::LevelBits::INFO);
 
 	m_swapchain.format = format;
 	m_swapchain.extent = createInfo.imageExtent;
@@ -337,7 +337,7 @@ void SDLWindow::_createSwapchain(const uint32_t deviceID, const VkExtent2D size,
         if (vkCreateImageView(device.m_vkHandle, &viewInfo, nullptr, &m_swapchain.imageViews[i]) != VK_SUCCESS) {
             throw std::runtime_error("failed to create swapchain image view!");
         }
-		Logger::print("Created image view", Logger::Levels::INFO);
+		Logger::print("Created image view", Logger::LevelBits::INFO);
     }
 	Logger::popContext();
 }

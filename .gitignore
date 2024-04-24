@@ -74,7 +74,7 @@ StyleCopReport.xml
 *_h.h
 *.ilk
 *.meta
-*.obj
+/*/*.obj
 *.iobj
 *.pch
 *.pdb
@@ -396,6 +396,8 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# Custom
 GPU_SVOEngine/imgui.ini
 /GPU_SVOEngine/assets
-!/GPU_SVOEngine/assets/debug/*.obj
+!/debug_assets/*.obj

@@ -11,9 +11,4 @@
     <PackageReference Include="CjClutter.ObjLoader" Version="1.0.0" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Models\VoxObjs\" />
-    <Folder Include="Models\Objs\" />
-  </ItemGroup>
-
 </Project>

@@ -14,7 +14,7 @@ namespace Voxelizer
         static void Main(string[] _args)
         {
             // To be set as function args
-            var modelPath = GetAssetPath("Models\\Objs\\triangle.obj");
+            var modelPath = GetAssetPath("assets\\debug\\Objs\\triangle.obj");
             var octreeResolution = 1;
 
 
@@ -23,7 +23,7 @@ namespace Voxelizer
             Print($"Octree resolution:\n\t{octreeResolution}");
 
             var result = Voxelize(modelPath, octreeResolution);
-            result.SaveToObj(GetAssetPath("Models\\Objs\\triangleVox.obj"));
+            result.SaveToObj(GetAssetPath("assets\\debug\\Objs\\triangleVox.obj"));
         }
 
 
@@ -31,7 +31,7 @@ namespace Voxelizer
 
         private static string GetAssetPath(string relPath)
         {
-            var rootPath = Directory.GetParent(Environment.CurrentDirectory).Parent.Parent.FullName;
+            var rootPath = Directory.GetParent(Environment.CurrentDirectory).Parent.Parent.Parent.FullName;
             return Path.Join(rootPath, relPath);
         }
         private static void Print(string str)

@@ -43,7 +43,6 @@ private:
 	uint32_t m_renderPassID = UINT32_MAX;
 	uint32_t m_pipelineID = UINT32_MAX;
 	std::vector<uint32_t> m_framebuffers{};
-	uint32_t m_imageAvailableSemaphoreID = UINT32_MAX;
 	uint32_t m_renderFinishedSemaphoreID = UINT32_MAX;
 	uint32_t m_inFlightFenceID = UINT32_MAX;
 

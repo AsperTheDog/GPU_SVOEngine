@@ -64,7 +64,7 @@ Engine::Engine() : cam({0, 0, 0}, {0, 0, 0}), m_window("Vulkan", 1920, 1080)
 	VulkanDevice& device = VulkanContext::getDevice(m_deviceID);
 
 	m_swapchainID = device.createSwapchain(m_window.getSurface(), m_window.getSize().toExtent2D(), {VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR});
-    VulkanSwapchain& swapchain = device.getSwapchain(m_swapchainID);
+    const VulkanSwapchain& swapchain = device.getSwapchain(m_swapchainID);
 
 	device.configureOneTimeQueue(m_transferQueuePos);
 	m_graphicsCmdBufferID = device.createCommandBuffer(graphicsQueueFamily, 0, false);
@@ -77,7 +77,6 @@ Engine::Engine() : cam({0, 0, 0}, {0, 0, 0}), m_window("Vulkan", 1920, 1080)
 		m_framebuffers[i] = createFramebuffer(swapchain.getImageView(i), swapchain.getExtent());
 
 	// Create sync objects
-	m_imageAvailableSemaphoreID = device.createSemaphore();
 	m_renderFinishedSemaphoreID = device.createSemaphore();
 	m_inFlightFenceID = device.createFence(true);
 
@@ -217,7 +216,7 @@ void Engine::run()
 
 		recordCommandBuffer(m_framebuffers[nextImage], imguiDrawData);
 
-		graphicsBuffer.submit(graphicsQueue, {{m_imageAvailableSemaphoreID, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT}}, {m_renderFinishedSemaphoreID}, m_inFlightFenceID);
+		graphicsBuffer.submit(graphicsQueue, {{device.getSwapchain(m_swapchainID).getImgSemaphore(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT}}, {m_renderFinishedSemaphoreID}, m_inFlightFenceID);
 
 		ImGui::UpdatePlatformWindows();
 		ImGui::RenderPlatformWindowsDefault();

@@ -146,11 +146,11 @@
     <ClCompile Include="src\main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\camera.hpp" />
-    <ClInclude Include="include\engine.hpp" />
-    <ClInclude Include="include\Octree\octree.hpp" />
+    <ClInclude Include="src\camera.hpp" />
+    <ClInclude Include="src\engine.hpp" />
     <ClInclude Include="resource.h" />
-    <ClInclude Include="include\sdl_window.hpp" />
+    <ClInclude Include="src\Octree\octree.hpp" />
+    <ClInclude Include="src\sdl_window.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="GPU_SVOEngine.rc" />

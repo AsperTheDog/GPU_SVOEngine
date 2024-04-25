@@ -1,6 +1,5 @@
-#include "Octree/octree.hpp"
+#include "octree.hpp"
 
-#include "camera.hpp"
 #include "utils/logger.hpp"
 
 glm::vec3 childPositions[] = {

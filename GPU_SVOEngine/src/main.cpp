@@ -13,7 +13,7 @@ int main()
 	Engine engine{};
 
 	Octree octree;
-    octree.preallocate(4000LL * 1024 * 1024);
+    //octree.preallocate(4000LL * 1024 * 1024);
 	octree.populateSample(11);
 
 	engine.configureOctreeBuffer(octree, 200.0f);

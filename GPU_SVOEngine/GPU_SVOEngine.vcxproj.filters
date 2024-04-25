@@ -35,16 +35,16 @@
     <ClInclude Include="resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\sdl_window.hpp">
+    <ClInclude Include="src\sdl_window.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\engine.hpp">
+    <ClInclude Include="src\engine.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\Octree\octree.hpp">
+    <ClInclude Include="src\camera.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\camera.hpp">
+    <ClInclude Include="src\Octree\octree.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

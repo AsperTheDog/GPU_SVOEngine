@@ -42,7 +42,7 @@ Engine::Engine() : cam({0, 0, 0}, {0, 0, 0}), m_window("Vulkan", 1920, 1080)
 #else
 	VulkanContext::init(VK_API_VERSION_1_3, true, false, m_window.getRequiredVulkanExtensions());
 #endif
-	m_window.createSurface();
+	m_window.createSurface(VulkanContext::getHandle());
 
 	const VulkanGPU gpu = chooseCorrectGPU();
 	const GPUQueueStructure queueStructure = gpu.getQueueFamilies();
@@ -63,7 +63,8 @@ Engine::Engine() : cam({0, 0, 0}, {0, 0, 0}), m_window("Vulkan", 1920, 1080)
 	m_deviceID = VulkanContext::createDevice(gpu, selector, {VK_KHR_SWAPCHAIN_EXTENSION_NAME}, {});
 	VulkanDevice& device = VulkanContext::getDevice(m_deviceID);
 
-	m_window.createSwapchain(m_deviceID, {VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR}, VK_PRESENT_MODE_FIFO_KHR);
+	m_swapchainID = device.createSwapchain(m_window.getSurface(), m_window.getSize().toExtent2D(), {VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR});
+    VulkanSwapchain& swapchain = device.getSwapchain(m_swapchainID);
 
 	device.configureOneTimeQueue(m_transferQueuePos);
 	m_graphicsCmdBufferID = device.createCommandBuffer(graphicsQueueFamily, 0, false);
@@ -71,9 +72,9 @@ Engine::Engine() : cam({0, 0, 0}, {0, 0, 0}), m_window("Vulkan", 1920, 1080)
 	createRenderPass();
 	createGraphicsPipeline();
 
-	m_framebuffers.resize(m_window.getImageCount());
-	for (uint32_t i = 0; i < m_window.getImageCount(); i++)
-		m_framebuffers[i] = createFramebuffer(m_window.getImageView(i), m_window.getSwapchainExtent());
+	m_framebuffers.resize(swapchain.getImageCount());
+	for (uint32_t i = 0; i < swapchain.getImageCount(); i++)
+		m_framebuffers[i] = createFramebuffer(swapchain.getImageView(i), swapchain.getExtent());
 
 	// Create sync objects
 	m_imageAvailableSemaphoreID = device.createSemaphore();
@@ -178,7 +179,6 @@ void Engine::run()
 	VulkanFence& inFlightFence = device.getFence(m_inFlightFenceID);
 
 	const VulkanQueue graphicsQueue = device.getQueue(m_graphicsQueuePos);
-	const VulkanQueue presentQueue = device.getQueue(m_presentQueuePos);
 	VulkanCommandBuffer& graphicsBuffer = device.getCommandBuffer(m_graphicsCmdBufferID, 0);
 
 	uint64_t frameCounter = 0;
@@ -191,7 +191,7 @@ void Engine::run()
 		inFlightFence.wait();
 		inFlightFence.reset();
 
-		const uint32_t nextImage = m_window.acquireNextImage(m_imageAvailableSemaphoreID, nullptr);
+		const uint32_t nextImage = device.getSwapchain(m_swapchainID).acquireNextImage();
 
 		if (nextImage == UINT32_MAX)
 		{
@@ -222,7 +222,7 @@ void Engine::run()
 		ImGui::UpdatePlatformWindows();
 		ImGui::RenderPlatformWindowsDefault();
 
-		m_window.present(presentQueue, nextImage, m_renderFinishedSemaphoreID);
+		device.getSwapchain(m_swapchainID).present(m_presentQueuePos, {m_renderFinishedSemaphoreID});
 
 		frameCounter++;
 	}
@@ -233,7 +233,9 @@ void Engine::createRenderPass()
 	Logger::pushContext("Create RenderPass");
 	VulkanRenderPassBuilder builder{};
 
-	const VkAttachmentDescription colorAttachment = VulkanRenderPassBuilder::createAttachment(m_window.getSwapchainImageFormat().format, 
+    const VkFormat format = VulkanContext::getDevice(m_deviceID).getSwapchain(m_swapchainID).getFormat().format;
+
+	const VkAttachmentDescription colorAttachment = VulkanRenderPassBuilder::createAttachment(format, 
 		VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_STORE, 
 		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 	builder.addAttachment(colorAttachment);
@@ -323,6 +325,8 @@ void Engine::initImgui() const
 		};
 	const uint32_t imguiPoolID = device.createDescriptorPool(pool_sizes, 1000U * pool_sizes.size(), VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT);
 
+    const VulkanSwapchain& swapchain = device.getSwapchain(m_swapchainID);
+
     m_window.initImgui();
     ImGui_ImplVulkan_InitInfo init_info = {};
     init_info.Instance = VulkanContext::getHandle();
@@ -333,8 +337,8 @@ void Engine::initImgui() const
     init_info.DescriptorPool = *device.getDescriptorPool(imguiPoolID);
     init_info.RenderPass = *device.getRenderPass(m_renderPassID);
     init_info.Subpass = 0;
-    init_info.MinImageCount = m_window.getMinImageCount();
-    init_info.ImageCount = m_window.getImageCount();
+    init_info.MinImageCount = swapchain.getMinImageCount();
+    init_info.ImageCount = swapchain.getImageCount();
     init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
     ImGui_ImplVulkan_Init(&init_info);
 }
@@ -353,15 +357,19 @@ void Engine::setupInputEvents()
 		}
 	});
 
-    m_window.getSwapchainRebuiltSignal().connect([&](const VkExtent2D extent)
+    m_window.getResizedSignal().connect([&](const VkExtent2D extent)
     {
         VulkanContext::getDevice(m_deviceID).waitIdle();
+        VulkanDevice& device = VulkanContext::getDevice(m_deviceID);
+
+        m_swapchainID = device.createSwapchain(m_window.getSurface(), extent, device.getSwapchain(m_swapchainID).getFormat(), m_swapchainID);
+        const VulkanSwapchain& swapchain = device.getSwapchain(m_swapchainID);
 
         Logger::pushContext("Swapchain resources rebuild");
-		for (uint32_t i = 0; i < m_window.getImageCount(); i++)
+		for (uint32_t i = 0; i < swapchain.getImageCount(); i++)
 		{
-			VulkanContext::getDevice(m_deviceID).freeFramebuffer(m_framebuffers[i]);
-			m_framebuffers[i] = createFramebuffer(m_window.getImageView(i), extent);
+			device.freeFramebuffer(m_framebuffers[i]);
+			m_framebuffers[i] = createFramebuffer(swapchain.getImageView(i), extent);
 		}
 		Logger::popContext();
     });
@@ -370,6 +378,7 @@ void Engine::setupInputEvents()
 void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_draw_data)
 {
 	Logger::pushContext("Command buffer recording");
+    const VulkanSwapchain& swapchain = VulkanContext::getDevice(m_deviceID).getSwapchain(m_swapchainID);
 
 	std::vector<VkClearValue> clearValues{2};
     clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
@@ -378,14 +387,14 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
 	VkViewport viewport;
     viewport.x = 0.0f;
     viewport.y = 0.0f;
-    viewport.width = static_cast<float>(m_window.getSwapchainExtent().width);
-    viewport.height = static_cast<float>(m_window.getSwapchainExtent().height);
+    viewport.width = static_cast<float>(swapchain.getExtent().width);
+    viewport.height = static_cast<float>(swapchain.getExtent().height);
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
 
 	VkRect2D scissor;
     scissor.offset = {0, 0};
-    scissor.extent = m_window.getSwapchainExtent();
+    scissor.extent = swapchain.getExtent();
 
 	const uint32_t layout = VulkanContext::getDevice(m_deviceID).getPipeline(m_pipelineID).getLayout();
 
@@ -396,7 +405,7 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
 	graphicsBuffer.reset();
 	graphicsBuffer.beginRecording();
 
-	graphicsBuffer.cmdBeginRenderPass(m_renderPassID, framebufferID, m_window.getSwapchainExtent(), clearValues);
+	graphicsBuffer.cmdBeginRenderPass(m_renderPassID, framebufferID, swapchain.getExtent(), clearValues);
 
         graphicsBuffer.cmdBindDescriptorSet(VK_PIPELINE_BIND_POINT_GRAPHICS, layout, m_octreeDescrSet);
 

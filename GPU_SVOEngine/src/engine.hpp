@@ -31,6 +31,7 @@ private:
 	Camera cam;
 
 	SDLWindow m_window;
+    uint32_t m_swapchainID = UINT32_MAX;
 
 	uint32_t m_deviceID = UINT32_MAX;
 

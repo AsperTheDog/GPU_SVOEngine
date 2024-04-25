@@ -133,7 +133,6 @@
   <ItemGroup>
     <ClInclude Include="repo\include\utils\logger.hpp" />
     <ClInclude Include="repo\include\utils\signal.hpp" />
-    <ClInclude Include="repo\include\vulkan_base.hpp" />
     <ClInclude Include="repo\include\vulkan_binding.hpp" />
     <ClInclude Include="repo\include\vulkan_buffer.hpp" />
     <ClInclude Include="repo\include\vulkan_command_buffer.hpp" />
@@ -148,6 +147,7 @@
     <ClInclude Include="repo\include\vulkan_queues.hpp" />
     <ClInclude Include="repo\include\vulkan_render_pass.hpp" />
     <ClInclude Include="repo\include\vulkan_shader.hpp" />
+    <ClInclude Include="repo\include\vulkan_swapchain.hpp" />
     <ClInclude Include="repo\include\vulkan_sync.hpp" />
   </ItemGroup>
   <ItemGroup>
@@ -165,6 +165,7 @@
     <ClCompile Include="repo\src\vulkan_queues.cpp" />
     <ClCompile Include="repo\src\vulkan_render_pass.cpp" />
     <ClCompile Include="repo\src\vulkan_shader.cpp" />
+    <ClCompile Include="repo\src\vulkan_swapchain.cpp" />
     <ClCompile Include="repo\src\vulkan_sync.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

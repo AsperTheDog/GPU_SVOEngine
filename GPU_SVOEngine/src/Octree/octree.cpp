@@ -1,6 +1,8 @@
 #include "octree.hpp"
 
+#include <array>
 #include <bitset>
+#include <chrono>
 #include <fstream>
 
 #include <glm/gtx/string_cast.hpp>
@@ -9,18 +11,18 @@
 
 
 glm::vec3 childPositions[] = {
-    glm::vec3(0, 0, 0),
-    glm::vec3(0, 0, 1),
-    glm::vec3(0, 1, 0),
-    glm::vec3(0, 1, 1),
-    glm::vec3(1, 0, 0),
-    glm::vec3(1, 0, 1),
-    glm::vec3(1, 1, 0),
-    glm::vec3(1, 1, 1)
+    glm::vec3(-1, -1, -1),
+    glm::vec3(-1, -1,  1),
+    glm::vec3(-1,  1, -1),
+    glm::vec3(-1,  1,  1),
+    glm::vec3( 1, -1, -1),
+    glm::vec3( 1, -1,  1),
+    glm::vec3( 1,  1, -1),
+    glm::vec3( 1,  1,  1)
 };
 
 NearPtr::NearPtr(const uint16_t ptr, const bool isFar)
-    : farFlag(isFar ? 1 : 0), addr(ptr & NEAR_PTR_MAX)
+    : addr(ptr & 0x7FFF), farFlag(isFar ? 1 : 0)
 {
 
 }
@@ -38,6 +40,16 @@ bool NearPtr::isFar() const
 uint16_t NearPtr::toRaw() const
 {
     return isFar() ? addr | 0x8000 : addr & NEAR_PTR_MAX;
+}
+
+void NearPtr::setPtr(const uint16_t ptr)
+{
+    addr = ptr;
+}
+
+void NearPtr::setFar(const bool isFar)
+{
+    farFlag = isFar ? 1 : 0;
 }
 
 BitField::BitField(const uint8_t field) : field(field)
@@ -67,6 +79,11 @@ void BitField::setBit(const uint8_t index, const bool value)
 uint8_t BitField::toRaw() const
 {
     return field;
+}
+
+bool BitField::operator==(const BitField& other) const
+{
+    return field == other.field;
 }
 
 BranchNode::BranchNode(const uint32_t raw)
@@ -189,7 +206,7 @@ uint32_t DebugOctreeNode::pack(const Type type) const
     return 0;
 }
 
-std::string DebugOctreeNode::toString(const uint32_t position, const Type type) const
+std::string DebugOctreeNode::toString(uint32_t position, const Type type) const
 {
     std::stringstream ss{};
     ss << "(" << position << ") ";
@@ -217,6 +234,18 @@ std::string DebugOctreeNode::toString(const uint32_t position, const Type type) 
 }
 #endif
 
+Octree::Octree(const uint8_t maxDepth)
+    : depth(maxDepth)
+{
+
+}
+
+Octree::Octree(const uint8_t maxDepth, const std::string_view outputFile)
+    : depth(maxDepth), dumpFile(outputFile)
+{
+
+}
+
 uint32_t Octree::getSize() const
 {
     return static_cast<uint32_t>(data.size());
@@ -237,102 +266,104 @@ void Octree::preallocate(const size_t size)
     data.reserve(size);
 }
 
-glm::vec3 shiftColor(const glm::vec3 color)
+void Octree::generate(const ProcessFunc func, void* processData)
 {
-    float r = std::min(std::max(color.r + (rand() % 2 == 0 ? 0.4f : -0.4f), 0.0f), 15.0f);
-    float g = std::min(std::max(color.g + (rand() % 2 == 0 ? 0.4f : -0.4f), 0.0f), 15.0f);
-    float b = std::min(std::max(color.b + (rand() % 2 == 0 ? 0.4f : -0.4f), 0.0f), 15.0f);
-    return { r, g, b };
+    process = func;
+    stats = OctreeStats{};
+    const std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
+    populate({ glm::vec3{0}, glm::vec3(static_cast<float>(1 << depth)) }, processData);
+    const std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
+    stats.constructionTime = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) / 1000.f;
+    Logger::print("Octree generated in " + std::to_string(stats.constructionTime) + "s", Logger::INFO);
 }
 
-bool Octree::populateRec(const uint32_t parentPos, const uint8_t currentDepth, const uint8_t maxDepth, glm::vec3 color, const float density)
+NodeRef Octree::populateRec(AABB nodeShape, const uint8_t currentDepth, void* processData)
 {
-    static uint64_t voxels = 0;
-    if (currentDepth >= maxDepth)
+    NodeRef ref = process(nodeShape, currentDepth, depth, processData);
+    if (!ref.exists || ref.isLeaf)
+        return ref;
+
+    BranchNode node{0};
+
+    // Recurse into children
+    std::array<NodeRef, 8> children;
+    for (int8_t i = 7; i >= 0; i--)
     {
-        LeafNode leaf{ 0 };
-        leaf.setColor(color);
-        leaf.setNormal({ 0, 0, 0 });
-        leaf.material = 0;
-        updateNode(parentPos, leaf);
-        voxels++;
-        return true;
+        nodeShape.halfSize *= 0.5f;
+        nodeShape.center += childPositions[i] * nodeShape.halfSize;
+        children[i] = populateRec(nodeShape, currentDepth + 1, processData);
+
+        node.childMask.setBit(i, children[i].exists);
+        node.leafMask.setBit(i, children[i].isLeaf);
+    }
+    if (node.childMask.toRaw() == 0)
+    {
+        ref.exists = false;
+        return ref;
     }
 
-    const uint32_t childIdx = getSize() - parentPos;
-    bool hasChildren = false;
-    BranchNode parent = BranchNode(get(parentPos));
-    parent.leafMask = currentDepth + 1 >= maxDepth ? BitField(0xFF) : BitField(0x00);
+    // Prepare addresses and far pointers
+    BitField farMaskOld{0};
+    BitField farMask{0};
+    uint8_t farCount = 0;
+    std::array<uint32_t, 8> addresses{};
+    do
+    {
+        uint8_t validChildCount = 0;
+        farMaskOld = farMask;
+        for (int8_t i = 7; i >= 0; i--)
+        {
+            if (!children[i].exists) continue;
+            children[i].pos = getSize() + validChildCount + farCount;
+            validChildCount++;
+            if (children[i].isLeaf) continue;
+            addresses[i] = children[i].pos - children[i].childPos;
+            if (addresses[i] > NEAR_PTR_MAX && farMask.getBit(i) == false)
+            {
+                farMask.setBit(i, true);
+                farCount++;
+            }
+        }
+    } while (farMask != farMaskOld);
 
-    uint8_t childCount = 0;
+    //Push far pointers to octree
+    for (int8_t i = 7; i >= 0; i--)
+    {
+        if (!farMask.getBit(i)) continue;
+        const FarNode ptr = FarNode(getSize() - children[i].childPos);
+        addresses[i] = children[i].pos - getSize();
+        addNode(ptr);
+    }
+
+    //Push children to octree
+    for (int8_t i = 7; i >= 0; i--)
+    {
+        if (!children[i].exists) continue;
+        if (children[i].isLeaf)
+        {
+            addNode(LeafNode(children[i].data));
+        }
+        else
+        {
+            BranchNode child = BranchNode(children[i].data);
+            child.ptr = NearPtr(static_cast<uint16_t>(addresses[i]), farMask.getBit(i));
+            addNode(child);
+        }
+    }
+
+    // Resolve position and return
+    uint8_t firstChild = 9;
     for (uint8_t i = 0; i < 8; i++)
     {
-        if (static_cast<float>(rand()) / RAND_MAX > density)
+        if (children[i].exists)
         {
-            continue;
+            firstChild = std::min(firstChild, i);
+            break;
         }
-
-        hasChildren = true;
-        if (parent.leafMask.getBit(i))
-            addNode(LeafNode(0));
-        else
-            addNode(BranchNode(0));
-        parent.childMask.setBit(i, true);
-        childCount++;
     }
-    
-    parent.leafMask = currentDepth + 1 >= maxDepth ? parent.childMask : BitField(0x00);
-
-    if (hasChildren)
-    {
-        NearPtr childPtr{ 0, false };
-        if (childIdx > NEAR_PTR_MAX)
-            childPtr = pushFarPtr(parentPos, childIdx, parentPos + childCount);
-        else
-            childPtr = NearPtr(static_cast<uint16_t>(childIdx), false);
-        parent.ptr = childPtr;
-    }
-    else
-    {
-        return false;
-    }
-
-    uint8_t count = 0;
-    for (uint8_t i = 0; i < 8; i++)
-    {
-        if (!parent.childMask.getBit(i))
-        {
-            continue;
-        }
-
-        color = shiftColor(color);
-        populateRec(parentPos + childIdx + count, currentDepth + 1, maxDepth, color, density);
-        ++count;
-    }
-
-    updateNode(parentPos, parent);
-
-    if (currentDepth == 0)
-    {
-        Logger::print("Octree built", Logger::LevelBits::DEBUG);
-        const float percentage = static_cast<float>(voxels) / static_cast<float>(pow(8, maxDepth - 1)) * 100.0f;
-        Logger::print(" - Voxels: " + std::to_string(voxels) + " (" + std::to_string(static_cast<uint64_t>(percentage)) + "% dense)", Logger::LevelBits::DEBUG);
-        Logger::print(" - Nodes: " + std::to_string(getSize()), Logger::LevelBits::DEBUG);
-        Logger::print(" - Bytes: " + std::to_string(getByteSize()), Logger::LevelBits::DEBUG);
-        Logger::print(" - Depth: " + std::to_string(maxDepth), Logger::LevelBits::DEBUG);
-        Logger::print(" - Far pointers: " + std::to_string(farPtrs.size()), Logger::LevelBits::DEBUG);
-    }
-
-    return false;
-}
-
-void Octree::generateRandomly(const uint8_t maxDepth, const float density)
-{
-    Logger::pushContext("Octree population");
-    addNode(BranchNode(0));
-    populateRec(0, 0, maxDepth, glm::u8vec3(8, 3, 8), density);
-    pack();
-    Logger::popContext();
+    ref.childPos = children[firstChild].pos;
+    ref.data = node.toRaw();
+    return ref;
 }
 
 void Octree::pack()
@@ -432,6 +463,43 @@ void Octree::clear()
 }
 
 #ifdef DEBUG_STRUCTURE
+std::string Octree::toString() const
+{
+    std::stringstream ss{};
+    ss << "Octree structure:\n";
+    for (uint32_t i = 1; i <= data.size(); i++)
+    {
+        ss << data[getSize() - i].toString(i - 1, types[getSize() - i]) << '\n';
+    }
+    return ss.str();
+}
+
+void Octree::populate(AABB nodeShape, void* processData)
+{
+    const NodeRef ref = populateRec({ glm::vec3{0}, glm::vec3(static_cast<float>(1 << depth)) }, 0, processData);
+    if (!ref.exists)
+    {
+        Logger::print("Octree generation returned non-existent root. Resulting octree is empty or broken", Logger::WARN);
+        return;
+    }
+    if (ref.isLeaf)
+    {
+        addNode(LeafNode(ref.data));
+    }
+    else
+    {
+        BranchNode node{ref.data};
+        uint32_t childPtr = getSize() - ref.childPos;
+        if (getSize() - ref.childPos > NEAR_PTR_MAX)
+        {
+            addNode(FarNode(childPtr));
+            childPtr = ref.pos - getSize();
+        }
+        node.ptr = NearPtr(static_cast<uint16_t>(childPtr), false);
+        addNode(node);
+    }
+}
+
 uint32_t Octree::get(const uint32_t index) const
 {
     const Type type = types[index];
@@ -443,7 +511,7 @@ uint32_t Octree::get(const uint32_t index) const
         return data[index].data.leafNode.toRaw();
     case Type::FAR_NODE:
         return data[index].data.farNode.toRaw();
-    }
+}
     return 0;
 }
 #else

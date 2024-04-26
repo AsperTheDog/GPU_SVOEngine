@@ -5,14 +5,14 @@
 
 #include <glm/glm.hpp>
 
-enum { NEAR_PTR_MAX = 0x7FFF };
+enum { NEAR_PTR_MAX = 0x0010 };
 
 #ifdef _DEBUG
-    #define DEBUG_STRUCTURE
+#define DEBUG_STRUCTURE
 #endif
 
 #ifdef DEBUG_STRUCTURE
-    #include <string>
+#include <string>
 #endif
 
 // Helper classes
@@ -26,6 +26,9 @@ public:
     [[nodiscard]] bool isFar() const;
 
     [[nodiscard]] uint16_t toRaw() const;
+
+    void setPtr(uint16_t ptr);
+    void setFar(bool isFar);
 
 private:
     uint16_t addr : 15;
@@ -42,16 +45,18 @@ public:
 
     [[nodiscard]] uint8_t toRaw() const;
 
+    bool operator==(const BitField& other) const;
+
 private:
     uint8_t field;
 };
 
-// Octree classes
+// Octree structures
 
 struct BranchNode
 {
     explicit BranchNode(uint32_t raw);
-    
+
     BitField leafMask{ 0 };
     BitField childMask{ 0 };
     NearPtr ptr{ 0, false };
@@ -62,7 +67,7 @@ struct BranchNode
 struct LeafNode
 {
     explicit LeafNode(uint32_t raw);
-    
+
 
     uint8_t colorz : 4;
     uint8_t colory : 4;
@@ -88,13 +93,6 @@ struct FarNode
     uint32_t ptr;
 
     [[nodiscard]] uint32_t toRaw() const;
-};
-
-struct FarNodeRef
-{
-    uint32_t sourcePos;
-    uint32_t destinationPos;
-    uint32_t farNodePos;
 };
 
 #ifdef DEBUG_STRUCTURE
@@ -123,16 +121,53 @@ struct DebugOctreeNode
 };
 #endif
 
+// Construction structures
+
+struct NodeRef
+{
+    uint32_t data = 0;
+    uint32_t pos = 0;
+    uint32_t childPos = 0;
+    bool isLeaf = false;
+    bool exists = false;
+};
+
+struct AABB
+{
+    glm::vec3 center;
+    glm::vec3 halfSize;
+};
+
+struct FarNodeRef
+{
+    uint32_t sourcePos;
+    uint32_t destinationPos;
+    uint32_t farNodePos;
+};
+
+// Statistics data
+
+struct OctreeStats
+{
+    uint64_t voxels = 0;
+    uint64_t farPtrs = 0;
+    float constructionTime = 0;
+};
+
+typedef NodeRef(*ProcessFunc)(const AABB&, uint8_t, uint8_t, void*);
+
 class Octree
 {
 public:
+    explicit Octree(uint8_t maxDepth);
+    Octree (uint8_t maxDepth, std::string_view outputFile);
+
     [[nodiscard]] uint32_t getSize() const;
     [[nodiscard]] uint32_t getByteSize() const;
-
     [[nodiscard]] uint8_t getDepth() const;
 
     void preallocate(size_t size);
-    void generateRandomly(uint8_t maxDepth, float density);
+    void generate(ProcessFunc func, void* processData);
     void addNode(BranchNode child);
     void addNode(LeafNode child);
     void addNode(FarNode child);
@@ -147,8 +182,13 @@ public:
 
     void clear();
 
+#ifdef DEBUG_STRUCTURE
+    [[nodiscard]] std::string toString() const;
+#endif
+
 private:
-    bool populateRec(unsigned parentPos, unsigned char currentDepth, unsigned char maxDepth, glm::vec3 color, float density);
+    void populate(AABB nodeShape, void* processData);
+    NodeRef populateRec(AABB node, uint8_t currentDepth, void* processData);
 
 #ifdef DEBUG_STRUCTURE
     std::vector<DebugOctreeNode> data;
@@ -159,6 +199,12 @@ private:
     uint32_t& get(uint32_t index);
 #endif
     std::vector<FarNodeRef> farPtrs;
+
+    size_t sizePtr = 0;
     uint8_t depth = 0;
+    ProcessFunc process = nullptr;
+    std::string dumpFile;
+
+    OctreeStats stats{};
 };
 

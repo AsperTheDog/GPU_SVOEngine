@@ -6,6 +6,7 @@
 #include <array>
 #include <unordered_set>
 #include <glm/gtx/string_cast.hpp>
+#include <glm/gtx/intersect.hpp>
 
 #include "tiny_obj_loader.h"
 #include "utils/logger.hpp"
@@ -130,6 +131,10 @@ Voxelizer::Voxelizer(std::string filename, uint8_t maxDepth)
     {
         colorMap[i] = glm::vec3{ static_cast<float>(rand() % 16), static_cast<float>(rand() % 16), static_cast<float>(rand() % 16) };
     }
+    if (colorMap.empty())
+    {
+        colorMap[0] = glm::vec3{ static_cast<float>(rand() % 16), static_cast<float>(rand() % 16), static_cast<float>(rand() % 16) };
+    }
 }
 
 uint32_t Model::getMesh(const uint32_t material)
@@ -148,6 +153,26 @@ uint32_t Model::getMesh(const uint32_t material)
 
 // TESTS
 
+glm::vec3 axisGroup[] = {
+    {1, 0, 0},
+    {0, 1, 0},
+    {0, 0, 1}
+};
+
+bool Voxelizer::AABBTriangle6Connect(const glm::vec3 v0, const glm::vec3 v1, const glm::vec3 v2, const AABB shape)
+{
+    for (auto& axis : axisGroup)
+    {
+        float t;
+        glm::vec2 baricentric;
+        if (glm::intersectRayTriangle(shape.center, axis, v0, v1, v2, baricentric, t))
+        {
+            if (std::abs(t) < shape.halfSize) return true;
+        }
+    }
+    return false;
+}
+
 static bool AABBTriangleSAT(const glm::vec3 v0, const glm::vec3 v1, const glm::vec3 v2, const float size, const glm::vec3 axis)
 {
     const float p0 = glm::dot(v0, axis);
@@ -162,7 +187,7 @@ static bool AABBTriangleSAT(const glm::vec3 v0, const glm::vec3 v1, const glm::v
     return !(glm::max(-maxP, minP) > r * size);
 }
 
-bool Voxelizer::intersectAABBTriangle(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, const AABB shape)
+bool Voxelizer::intersectAABBTriangleSAT(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, const AABB shape)
 {
     v0 -= shape.center;
     v1 -= shape.center;
@@ -212,7 +237,7 @@ bool Voxelizer::intersectAABBPoint(const glm::vec3 point, const AABB shape)
     return glm::abs(point.x - shape.center.x) < shape.halfSize && glm::abs(point.y - shape.center.y) < shape.halfSize && glm::abs(point.z - shape.center.z) < shape.halfSize;
 }
 
-bool Voxelizer::doesAABBInteresect(const AABB& shape, bool isLeaf, const uint8_t depth)
+bool Voxelizer::doesAABBInteresect(const AABB& shape, const bool isLeaf, const uint8_t depth)
 {
     if (depth == 0) return true;
 
@@ -223,10 +248,12 @@ bool Voxelizer::doesAABBInteresect(const AABB& shape, bool isLeaf, const uint8_t
         //if (triangle.isConfined()) continue;
 
         std::array<glm::vec3, 3> tri = getTrianglePos(triangle);
-        const bool intersects = intersectAABBTriangle(tri[0], tri[1], tri[2], shape);
+        bool intersects;
+        if (isLeaf) intersects = AABBTriangle6Connect(tri[0], tri[1], tri[2], shape);
+        else intersects = intersectAABBTriangleSAT(tri[0], tri[1], tri[2], shape);
         if (!intersects) continue;
         const bool confined = intersectAABBPoint(tri[0], shape) && intersectAABBPoint(tri[1], shape) && intersectAABBPoint(tri[2], shape);
-        TriangleIndex triangleIndex{triangle.index, confined};
+        TriangleIndex triangleIndex{ triangle.index, confined };
         triangleTree[depth].push_back(triangleIndex);
     }
     return !triangleTree[depth].empty();
@@ -234,7 +261,7 @@ bool Voxelizer::doesAABBInteresect(const AABB& shape, bool isLeaf, const uint8_t
 
 void Voxelizer::sampleVoxel(NodeRef& node, const uint8_t depth) const
 {
-    LeafNode leaf{0};
+    LeafNode leaf{ 0 };
     leaf.material = getMaterialID(triangleTree[depth][0]);
     leaf.setColor(colorMap.at(leaf.material));
     node.data = leaf.toRaw();
@@ -252,7 +279,7 @@ AABB Voxelizer::getModelAABB() const
 std::array<glm::vec3, 3> Voxelizer::getTrianglePos(const TriangleIndex triangle) const
 {
     const TriangleRootIndex rootIndex = triangles[triangle.getIndex()];
-    
+
     return getTrianglePos(rootIndex);
 }
 

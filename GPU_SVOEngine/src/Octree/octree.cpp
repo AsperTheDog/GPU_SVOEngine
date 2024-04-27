@@ -317,7 +317,7 @@ void Octree::generate(const AABB root, const ProcessFunc func, void* processData
     Logger::print("  Save time: " + std::to_string(m_stats.saveTime) + "s", Logger::INFO);
 }
 
-NodeRef Octree::populateRec(AABB nodeShape, const uint8_t currentDepth, void* processData)
+NodeRef Octree::populateRec(const AABB nodeShape, const uint8_t currentDepth, void* processData)
 {
     NodeRef ref = m_process(nodeShape, currentDepth, m_depth, processData);
     if (!ref.exists || ref.isLeaf)

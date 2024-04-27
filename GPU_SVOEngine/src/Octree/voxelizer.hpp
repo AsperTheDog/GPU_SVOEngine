@@ -89,8 +89,9 @@ class Voxelizer
 public:
     explicit Voxelizer(std::string filename, uint8_t maxDepth);
 
-    static bool intersectAABBTriangle(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, const AABB shape);
-    static bool intersectAABBPoint(glm::vec3 point, const AABB shape);
+    static bool intersectAABBTriangleSAT(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, AABB shape);
+    static bool AABBTriangle6Connect(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, AABB shape);
+    static bool intersectAABBPoint(glm::vec3 point, AABB shape);
 
     bool doesAABBInteresect(const AABB& shape, bool isLeaf, uint8_t depth);
     void sampleVoxel(NodeRef& node, uint8_t depth) const;

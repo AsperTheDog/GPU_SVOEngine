@@ -12,7 +12,7 @@ int main()
 #else
     Logger::setLevels(Logger::ALL);
 #endif
-    constexpr uint8_t depth = 11;
+    constexpr uint8_t depth = 12;
 
 	Engine engine{};
 	Octree octree{depth, "assets/octree.bin"};

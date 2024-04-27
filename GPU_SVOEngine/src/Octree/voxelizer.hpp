@@ -62,14 +62,26 @@ struct Triangle
     Vertex v0;
     Vertex v1;
     Vertex v2;
+    
+
+    struct WeightData
+    {
+        glm::vec3 weights;
+        glm::vec3 position;
+    };
+
+    [[nodiscard]] glm::vec3 getInterpolationWeights(glm::vec3 point) const;
+    [[nodiscard]] WeightData getTriangleClosestWeight(glm::vec3 point) const;
+    [[nodiscard]] glm::vec2 getWeightedUV(glm::vec3 weights) const;
+    [[nodiscard]] glm::vec3 getWeightedNormal(glm::vec3 weights) const;
 };
 
 struct TriangleRootIndex
 {
-    uint32_t matIndex;
+    uint16_t matIndex;
     uint32_t index;
 
-    [[nodiscard]] uint32_t getMaterial() const;
+    [[nodiscard]] uint16_t getMaterial() const;
     [[nodiscard]] uint32_t getIndex() const;
 };
 
@@ -94,14 +106,14 @@ public:
     static bool intersectAABBPoint(glm::vec3 point, AABB shape);
 
     bool doesAABBInteresect(const AABB& shape, bool isLeaf, uint8_t depth);
-    void sampleVoxel(NodeRef& node, uint8_t depth) const;
+    void sampleVoxel(AABB shape, NodeRef& node, const uint8_t depth) const;
     [[nodiscard]] AABB getModelAABB() const;
 
 private:
     [[nodiscard]] std::array<glm::vec3, 3> getTrianglePos(TriangleIndex triangle) const;
     [[nodiscard]] Triangle getTriangle(TriangleIndex triangle) const;
     [[nodiscard]] Material getMaterial(TriangleIndex triangle) const;
-    [[nodiscard]] uint32_t getMaterialID(TriangleIndex triangle) const;
+    [[nodiscard]] uint16_t getMaterialID(TriangleIndex triangle) const;
     [[nodiscard]] std::array<glm::vec3, 3> getTrianglePos(TriangleRootIndex rootIndex) const;
     [[nodiscard]] Triangle getTriangle(TriangleRootIndex rootIndex) const;
     [[nodiscard]] Material getMaterial(TriangleRootIndex rootIndex) const;

@@ -37,9 +37,12 @@ inline NodeRef generateRandomly(const AABB& nodeShape, const uint8_t depth, cons
     if (nodeRef.isLeaf)
     {
         LeafNode leafNode{ 0 };
-        leafNode.setColor(randomData.color[depth]);
+        leafNode.setUV({nodeShape.center.x, nodeShape.center.y});
         leafNode.setNormal(glm::vec3{ 0.0f, 1.0f, 0.0f });
-        nodeRef.data = leafNode.toRaw();
+        leafNode.material = 0;
+        const std::pair<LeafNode1, LeafNode2> leafs = leafNode.split();
+        nodeRef.data1 = leafs.first.toRaw();
+        nodeRef.data2 = leafs.second.toRaw();
     }
 
     return nodeRef;
@@ -54,6 +57,6 @@ inline NodeRef voxelize(const AABB& nodeShape, const uint8_t depth, const uint8_
     nodeRef.isLeaf = depth >= maxDepth;
     nodeRef.exists = voxelizer.doesAABBInteresect(nodeShape, nodeRef.isLeaf, depth);
     if (nodeRef.exists && nodeRef.isLeaf)
-        voxelizer.sampleVoxel(nodeRef, depth);
+        voxelizer.sampleVoxel(nodeShape, nodeRef, depth);
     return nodeRef;
 }

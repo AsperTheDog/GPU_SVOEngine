@@ -9,10 +9,61 @@
 #include <glm/gtx/intersect.hpp>
 
 #include "tiny_obj_loader.h"
-#include "utils/logger.hpp"
 
+template <typename T>
+static int sign(T val)
+{
+    return (T(0) < val) - (val < T(0));
+}
 
-uint32_t TriangleRootIndex::getMaterial() const
+glm::vec3 Triangle::getInterpolationWeights(const glm::vec3 point) const
+{
+    glm::vec3 f1 = v0.pos - point;
+    glm::vec3 f2 = v1.pos - point;
+    glm::vec3 f3 = v2.pos - point;
+    glm::vec3 va = glm::cross(v0.pos - v1.pos, v0.pos - v2.pos);
+    glm::vec3 va1 = glm::cross(f2, f3);
+    glm::vec3 va2 = glm::cross(f3, f1);
+    glm::vec3 va3 = glm::cross(f1, f2);
+    float a = glm::length(va);
+    glm::vec3 weights;
+    weights.x = glm::length(va1) / a * sign(glm::dot(va, va1));
+    weights.y = glm::length(va2) / a * sign(glm::dot(va, va2));
+    weights.z = glm::length(va3) / a * sign(glm::dot(va, va3));
+
+    return weights;
+}
+
+Triangle::WeightData Triangle::getTriangleClosestWeight(const glm::vec3 point) const
+{
+    // Get the normal of the plane formed by the triangle
+    WeightData data;
+    const glm::vec3 normal = glm::normalize(glm::cross(v1.pos - v0.pos, v2.pos - v0.pos));
+    float t;
+    glm::intersectRayPlane(point, normal, v0.pos, normal, t);
+    const glm::vec3 planePoint = point + t * normal;
+    data.weights = getInterpolationWeights(planePoint);
+    if (data.weights.x > 0 && data.weights.y > 0 && data.weights.z > 0)
+    {
+        data.position = planePoint;
+        return data;
+    }
+    //TODO
+
+    return data;
+}
+
+glm::vec2 Triangle::getWeightedUV(const glm::vec3 weights) const
+{
+    return v0.texCoord * weights.x + v1.texCoord * weights.y + v2.texCoord * weights.z;
+}
+
+glm::vec3 Triangle::getWeightedNormal(const glm::vec3 weights) const
+{
+    return glm::normalize(v0.normal * weights.x + v1.normal * weights.y + v2.normal * weights.z);
+}
+
+uint16_t TriangleRootIndex::getMaterial() const
 {
     return matIndex;
 }
@@ -259,12 +310,33 @@ bool Voxelizer::doesAABBInteresect(const AABB& shape, const bool isLeaf, const u
     return !triangleTree[depth].empty();
 }
 
-void Voxelizer::sampleVoxel(NodeRef& node, const uint8_t depth) const
+void Voxelizer::sampleVoxel(AABB shape, NodeRef& node, const uint8_t depth) const
 {
-    LeafNode leaf{ 0 };
-    leaf.material = getMaterialID(triangleTree[depth][0]);
-    leaf.setColor(colorMap.at(leaf.material));
-    node.data = leaf.toRaw();
+    LeafNode leafNode{ 0 };
+    Triangle closestT;
+    glm::vec3 closestW;
+    float closestD = FLT_MAX;
+    uint16_t closestM = 0;
+    for (const TriangleIndex& triangle : triangleTree[depth])
+    {
+        Triangle t = getTriangle(triangle);
+        auto [weights, position] = t.getTriangleClosestWeight(shape.center);
+        float dist = glm::length(position - shape.center);
+        if (dist < closestD)
+        {
+            closestD = dist;
+            closestW = weights;
+            closestT = t;
+            closestM = getMaterialID(triangle);
+        }
+    }
+
+    leafNode.setMaterial(closestM);
+    leafNode.setUV(closestT.getWeightedUV(closestW));
+    leafNode.setNormal(closestT.getWeightedNormal(closestW));
+    auto [leaf1, leaf2] = leafNode.split();
+    node.data1 = leaf1.toRaw();
+    node.data2 = leaf2.toRaw();
 }
 
 AABB Voxelizer::getModelAABB() const
@@ -294,7 +366,7 @@ Material Voxelizer::getMaterial(const TriangleIndex triangle) const
     return model.materials[getMaterialID(triangle)];
 }
 
-uint32_t Voxelizer::getMaterialID(const TriangleIndex triangle) const
+uint16_t Voxelizer::getMaterialID(const TriangleIndex triangle) const
 {
     return triangles[triangle.getIndex()].getMaterial();
 }

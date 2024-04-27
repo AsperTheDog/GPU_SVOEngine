@@ -5,6 +5,9 @@
 
 #include <glm/glm.hpp>
 
+struct LeafNode1;
+struct LeafNode2;
+
 enum { NEAR_PTR_MAX = 0x7FFF };
 
 #ifdef _DEBUG
@@ -66,22 +69,61 @@ struct BranchNode
 
 struct LeafNode
 {
-    explicit LeafNode(uint32_t raw);
+    explicit LeafNode(uint64_t raw);
 
+    uint64_t normalz : 10;
+    uint64_t normaly : 10;
+    uint64_t normalx : 10;
+    uint64_t material : 10;
+    uint64_t uvy : 12;
+    uint64_t uvx : 12;
 
-    uint8_t colorz : 4;
-    uint8_t colory : 4;
-    uint8_t colorx : 4;
-    uint8_t normalz : 4;
-    uint8_t normaly : 4;
-    uint8_t normalx : 4;
-    uint8_t material;
+    void setUV(const glm::vec2& uv);
+    void setNormal(const glm::vec3& normal);
+    void setMaterial(uint16_t material);
 
-    void setNormal(const glm::u8vec3& normal);
-    void setColor(const glm::u8vec3& color);
+    [[nodiscard]] glm::vec2 getUV() const;
+    [[nodiscard]] glm::vec3 getNormal() const;
+    [[nodiscard]] uint16_t getMaterial(LeafNode1 other) const;
 
-    [[nodiscard]] glm::u8vec3 getNormal() const;
-    [[nodiscard]] glm::u8vec3 getColor() const;
+    [[nodiscard]] uint64_t toRaw() const;
+    [[nodiscard]] std::pair<LeafNode1, LeafNode2> split() const;
+
+    static LeafNode combine(LeafNode1 leafNode1, LeafNode2 leafNode2);
+};
+
+struct LeafNode1
+{
+    explicit LeafNode1(uint32_t raw);
+
+    
+    uint32_t material : 8;
+    uint32_t uvy : 12;
+    uint32_t uvx : 12;
+
+    void setUV(const glm::vec2& uv);
+    void set(uint16_t material);
+
+    [[nodiscard]] glm::vec2 getUV() const;
+    [[nodiscard]] uint16_t getMaterial(LeafNode2 other) const;
+
+    [[nodiscard]] uint32_t toRaw() const;
+};
+
+struct LeafNode2
+{
+    explicit LeafNode2(uint32_t raw);
+
+    uint32_t normalz : 10;
+    uint32_t normaly : 10;
+    uint32_t normalx : 10;
+    uint32_t material : 2;
+
+    void setNormal(const glm::vec3& normal);
+    void setMaterial(uint16_t material);
+
+    [[nodiscard]] glm::vec3 getNormal() const;
+    [[nodiscard]] uint16_t getMaterial(LeafNode1 other) const;
 
     [[nodiscard]] uint32_t toRaw() const;
 };
@@ -99,8 +141,9 @@ struct FarNode
 enum Type : uint8_t
 {
     BRANCH_NODE = 0,
-    LEAF_NODE = 1,
-    FAR_NODE = 2
+    LEAF_NODE1 = 1,
+    LEAF_NODE2 = 2,
+    FAR_NODE = 3
 };
 
 struct DebugOctreeNode
@@ -108,7 +151,8 @@ struct DebugOctreeNode
     union Data
     {
         BranchNode branchNode;
-        LeafNode leafNode;
+        LeafNode1 leafNode1;
+        LeafNode2 leafNode2;
         FarNode farNode;
 
         Data();
@@ -126,7 +170,8 @@ struct DebugOctreeNode
 
 struct NodeRef
 {
-    uint32_t data = 0;
+    uint32_t data1 = 0;
+    uint32_t data2 = 0;
     uint32_t pos = 0;
     uint32_t childPos = 0;
     bool isLeaf = false;
@@ -177,9 +222,12 @@ public:
     void generate(AABB root, ProcessFunc func, void* processData);
     void addNode(BranchNode child);
     void addNode(LeafNode child);
+    void addNode(LeafNode1 child);
+    void addNode(LeafNode2 child);
     void addNode(FarNode child);
     void updateNode(uint32_t index, BranchNode node);
-    void updateNode(uint32_t index, LeafNode node);
+    void updateNode(uint32_t index, LeafNode1 node);
+    void updateNode(uint32_t index, LeafNode2 node);
     void updateNode(uint32_t index, FarNode node);
     void pack();
     NearPtr pushFarPtr(uint32_t sourcePos, uint32_t destinationPos, uint32_t farNodePos);

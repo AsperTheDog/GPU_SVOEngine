@@ -9,7 +9,6 @@
 
 #include "utils/logger.hpp"
 
-
 glm::vec3 childPositions[] = {
     glm::vec3(-1, -1, -1),
     glm::vec3(-1, -1,  1),
@@ -88,11 +87,11 @@ bool BitField::operator==(const BitField& other) const
 
 BranchNode::BranchNode(const uint32_t raw)
 {
-    const bool farFlag = (raw & 0x80000000) >> 31;
+    const bool farFlag =     (raw & 0x80000000) >> 31;
     const uint16_t address = (raw & 0x7FFF0000) >> 16;
+    childMask =     BitField((raw & 0x0000FF00) >> 8);
+    leafMask =       BitField(raw & 0x000000FF);
     ptr = NearPtr(address, farFlag);
-    childMask = BitField((raw & 0x0000FF00) >> 8);
-    leafMask = BitField(raw & 0x000000FF);
 }
 
 uint32_t BranchNode::toRaw() const
@@ -100,48 +99,147 @@ uint32_t BranchNode::toRaw() const
     return ptr.toRaw() << 16 | childMask.toRaw() << 8 | leafMask.toRaw();
 }
 
-LeafNode::LeafNode(const uint32_t raw)
+LeafNode::LeafNode(const uint64_t raw)
+{
+    normalz =  (raw & 0xFFC0000000000000) >> 54;
+    normaly =  (raw & 0x003FF00000000000) >> 44;
+    normalx =  (raw & 0x00000FFC00000000) >> 34;
+    material = (raw & 0x00000003FF000000) >> 24;
+    uvy =      (raw & 0x0000000000FFF000) >> 12;
+    uvx =       raw & 0x0000000000000FFF;
+}
+
+void LeafNode::setUV(const glm::vec2& uv)
+{
+    constexpr uint16_t max = 0xFFF;
+    uvx = std::min(static_cast<uint16_t>(uv.x * max), max);
+    uvy = std::min(static_cast<uint16_t>(uv.y * max), max);
+}
+
+void LeafNode::setNormal(const glm::vec3& normal)
+{
+    constexpr uint16_t max = 0x3FF;
+    normalx = std::min(static_cast<uint16_t>(normal.x * max), max);
+    normaly = std::min(static_cast<uint16_t>(normal.y * max), max);
+    normalz = std::min(static_cast<uint16_t>(normal.z * max), max);
+}
+
+void LeafNode::setMaterial(const uint16_t mat)
+{
+    material = mat & 0x3FF;
+}
+
+glm::vec2 LeafNode::getUV() const
+{
+    return { static_cast<float>(uvx) / 0xFFF, static_cast<float>(uvy) / 0xFFF };
+}
+
+glm::vec3 LeafNode::getNormal() const
+{
+    return { static_cast<float>(normalx) / 0x03FF, static_cast<float>(normaly) / 0x03FF, static_cast<float>(normalz) / 0x03FF };
+}
+
+uint16_t LeafNode::getMaterial(const LeafNode1 other) const
+{
+    return static_cast<uint16_t>((material & 0x003) << 8 | (other.material & 0xFF));
+}
+
+uint64_t LeafNode::toRaw() const
+{
+    uint64_t raw = 0;
+    raw |= static_cast<uint64_t>(uvx);
+    raw |= static_cast<uint64_t>(uvy) << 12;
+    raw |= static_cast<uint64_t>(material) << 24;
+    raw |= static_cast<uint64_t>(normalx) << 34;
+    raw |= static_cast<uint64_t>(normaly) << 44;
+    raw |= static_cast<uint64_t>(normalz) << 54;
+    return raw;
+}
+
+std::pair<LeafNode1, LeafNode2> LeafNode::split() const
+{
+    const uint64_t raw = toRaw();
+    const uint32_t raw1 = static_cast<uint32_t>((raw & 0xFFFFFFFF00000000) >> 32);
+    const uint32_t raw2 =  static_cast<uint32_t>(raw & 0x00000000FFFFFFFF);
+    return {LeafNode1{raw1}, LeafNode2{raw2}};
+}
+
+LeafNode LeafNode::combine(const LeafNode1 leafNode1, const LeafNode2 leafNode2)
+{
+    uint64_t raw = 0;
+    raw |= leafNode2.toRaw();
+    raw |= static_cast<uint64_t>(leafNode1.toRaw()) << 32;
+    return LeafNode{raw};
+}
+
+LeafNode1::LeafNode1(const uint32_t raw)
 {
     material = (raw & 0xFF000000) >> 24;
-    normalx = (raw & 0x00F00000) >> 20;
-    normaly = (raw & 0x000F0000) >> 16;
-    normalz = (raw & 0x0000F000) >> 12;
-    colorx = (raw & 0x00000F00) >> 8;
-    colory = (raw & 0x000000F0) >> 4;
-    colorz = raw & 0x0000000F;
+    uvx =      (raw & 0x00FFF000) >> 12;
+    uvy =       raw & 0x00000FFF;
 }
 
-void LeafNode::setNormal(const glm::u8vec3& normal)
+void LeafNode1::setUV(const glm::vec2& uv)
 {
-    constexpr uint8_t max = 0xFF;
-    normalx = std::min(normal.x, max);
-    normaly = std::min(normal.y, max);
-    normalz = std::min(normal.z, max);
+    constexpr uint16_t max = 0xFFF;
+    uvx = std::min(static_cast<uint16_t>(uv.x * max), max);
+    uvy = std::min(static_cast<uint16_t>(uv.y * max), max);
 }
 
-void LeafNode::setColor(const glm::u8vec3& color)
+void LeafNode1::set(const uint16_t mat)
 {
-    constexpr uint8_t max = 0xFF;
-    colorx = std::min(color.x, max);
-    colory = std::min(color.y, max);
-    colorz = std::min(color.z, max);
+    material = mat & 0x0FF;
 }
 
-glm::u8vec3 LeafNode::getNormal() const
+glm::vec2 LeafNode1::getUV() const
 {
-    return { normalx, normaly, normalz };
+    return { static_cast<float>(uvx) / 0xFFF, static_cast<float>(uvy) / 0xFFF };
 }
 
-glm::u8vec3 LeafNode::getColor() const
+uint16_t LeafNode1::getMaterial(const LeafNode2 other) const
 {
-    return { colorx, colory, colorz };
+    return static_cast<uint16_t>((other.material &  0x003) << 8 | (material & 0x0FF));
 }
 
-uint32_t LeafNode::toRaw() const
+uint32_t LeafNode1::toRaw() const
 {
-    const glm::u8vec3 tmpNormal = glm::min(getNormal(), glm::u8vec3(15));
-    const glm::u8vec3 tmpColor = glm::min(getColor(), glm::u8vec3(15));
-    return material << 24 | tmpNormal.x << 20 | tmpNormal.y << 16 | tmpNormal.z << 12 | tmpColor.x << 8 | tmpColor.y << 4 | tmpColor.z;
+    return uvx << 24 | uvy << 12 | material;
+}
+
+LeafNode2::LeafNode2(const uint32_t raw)
+{
+    normalz =  (raw & 0xFFC00000) >> 22;
+    normaly =  (raw & 0x003FF000) >> 12;
+    normalx =  (raw & 0x00000FFC) >> 2;
+    material = (raw & 0x00000003) >> 1;
+}
+
+void LeafNode2::setNormal(const glm::vec3& normal)
+{
+    constexpr uint16_t max = 0x3FF;
+    normalx = std::min(static_cast<uint16_t>(normal.x * max), max);
+    normaly = std::min(static_cast<uint16_t>(normal.y * max), max);
+    normalz = std::min(static_cast<uint16_t>(normal.z * max), max);
+}
+
+void LeafNode2::setMaterial(const uint16_t mat)
+{
+    this->material = mat & 0x0300;
+}
+
+glm::vec3 LeafNode2::getNormal() const
+{
+    return { static_cast<float>(normalx) / 0x03FF, static_cast<float>(normaly) / 0x03FF, static_cast<float>(normalz) / 0x03FF };
+}
+
+uint16_t LeafNode2::getMaterial(const LeafNode1 other) const
+{
+    return static_cast<uint16_t>((material & 0x0003) << 8 | (other.material & 0x00FF));
+}
+
+uint32_t LeafNode2::toRaw() const
+{
+    return normalx << 22 | normaly << 12 | normalz << 2 | (material & 0x0002);
 }
 
 FarNode::FarNode(const uint32_t raw)
@@ -167,8 +265,11 @@ DebugOctreeNode::DebugOctreeNode(const Type type)
     case Type::BRANCH_NODE:
         data.branchNode = BranchNode(0);
         break;
-    case Type::LEAF_NODE:
-        data.leafNode = LeafNode(0);
+    case Type::LEAF_NODE1:
+        data.leafNode1 = LeafNode1(0);
+        break;
+    case Type::LEAF_NODE2:
+        data.leafNode2 = LeafNode2(0);
         break;
     case Type::FAR_NODE:
         data.farNode = FarNode(0);
@@ -183,8 +284,11 @@ void DebugOctreeNode::update(const uint32_t raw, const Type type)
     case Type::BRANCH_NODE:
         data.branchNode = BranchNode(raw);
         break;
-    case Type::LEAF_NODE:
-        data.leafNode = LeafNode(raw);
+    case Type::LEAF_NODE1:
+        data.leafNode1 = LeafNode1(raw);
+        break;
+    case Type::LEAF_NODE2:
+        data.leafNode2 = LeafNode2(raw);
         break;
     case Type::FAR_NODE:
         data.farNode = FarNode(raw);
@@ -198,15 +302,17 @@ uint32_t DebugOctreeNode::pack(const Type type) const
     {
     case Type::BRANCH_NODE:
         return data.branchNode.toRaw();
-    case Type::LEAF_NODE:
-        return data.leafNode.toRaw();
+    case Type::LEAF_NODE1:
+        return data.leafNode1.toRaw();
+    case Type::LEAF_NODE2:
+        return data.leafNode2.toRaw();
     case Type::FAR_NODE:
         return data.farNode.toRaw();
     }
     return 0;
 }
 
-std::string DebugOctreeNode::toString(uint32_t position, const Type type) const
+std::string DebugOctreeNode::toString(const uint32_t position, const Type type) const
 {
     std::stringstream ss{};
     ss << "(" << position << ") ";
@@ -219,11 +325,15 @@ std::string DebugOctreeNode::toString(uint32_t position, const Type type) const
         ss << "leafMask: " << std::bitset<8>(data.branchNode.leafMask.toRaw()) << ", ";
         ss << "childMask: " << std::bitset<8>(data.branchNode.childMask.toRaw()) << " }";
         break;
-    case LEAF_NODE:
-        ss << "LeafNode: {";
-        ss << "material: " << static_cast<uint32_t>(data.leafNode.material) << ", ";
-        ss << "normal: " << glm::to_string(data.leafNode.getNormal()) << ", ";
-        ss << "color: " << glm::to_string(data.leafNode.getColor()) << " }";
+    case LEAF_NODE1:
+        ss << "LeafNode1: {";
+        ss << "uv: " << glm::to_string(data.leafNode1.getUV()) << ", ";
+        ss << "material: " << data.leafNode1.material << " }";
+        break;
+    case LEAF_NODE2:
+        ss << "LeafNode1: {";
+        ss << "material: " << data.leafNode2.material << ", ";
+        ss << "normal: " << glm::to_string(data.leafNode2.getNormal()) << " }";
         break;
     case FAR_NODE:
         ss << "FarNode: {";
@@ -385,12 +495,12 @@ NodeRef Octree::populateRec(const AABB nodeShape, const uint8_t currentDepth, vo
         if (!children[i].exists) continue;
         if (children[i].isLeaf)
         {
-            addNode(LeafNode(children[i].data));
+            addNode(LeafNode1(children[i].data1));
             m_stats.voxels++;
         }
         else
         {
-            BranchNode child = BranchNode(children[i].data);
+            BranchNode child = BranchNode(children[i].data1);
             child.ptr = NearPtr(static_cast<uint16_t>(addresses[i]), farMask.getBit(i));
             addNode(child);
         }
@@ -407,7 +517,7 @@ NodeRef Octree::populateRec(const AABB nodeShape, const uint8_t currentDepth, vo
         }
     }
     ref.childPos = children[firstChild].pos;
-    ref.data = node.toRaw();
+    ref.data1 = node.toRaw();
     return ref;
 }
 
@@ -422,7 +532,7 @@ void Octree::pack()
 void Octree::addNode(const BranchNode child)
 {
 #ifdef DEBUG_STRUCTURE
-    DebugOctreeNode node(Type::BRANCH_NODE);
+    DebugOctreeNode node;
     node.data.branchNode = child;
     m_data.push_back(node);
     m_types.push_back(Type::BRANCH_NODE);
@@ -433,11 +543,30 @@ void Octree::addNode(const BranchNode child)
 
 void Octree::addNode(const LeafNode child)
 {
+    const auto [leaf1, leaf2] = child.split();
+    addNode(leaf1);
+    addNode(leaf2);
+}
+
+void Octree::addNode(const LeafNode1 child)
+{
 #ifdef DEBUG_STRUCTURE
-    DebugOctreeNode node(Type::LEAF_NODE);
-    node.data.leafNode = child;
+    DebugOctreeNode node;
+    node.data.leafNode1 = child;
     m_data.push_back(node);
-    m_types.push_back(Type::LEAF_NODE);
+    m_types.push_back(Type::LEAF_NODE1);
+#else
+    m_data.push_back(child.toRaw());
+#endif
+}
+
+void Octree::addNode(const LeafNode2 child)
+{
+#ifdef DEBUG_STRUCTURE
+    DebugOctreeNode node;
+    node.data.leafNode2 = child;
+    m_data.push_back(node);
+    m_types.push_back(Type::LEAF_NODE2);
 #else
     m_data.push_back(child.toRaw());
 #endif
@@ -446,7 +575,7 @@ void Octree::addNode(const LeafNode child)
 void Octree::addNode(const FarNode child)
 {
 #ifdef DEBUG_STRUCTURE
-    DebugOctreeNode node(Type::FAR_NODE);
+    DebugOctreeNode node;
     node.data.farNode = child;
     m_data.push_back(node);
     m_types.push_back(Type::FAR_NODE);
@@ -464,10 +593,19 @@ void Octree::updateNode(uint32_t index, BranchNode node)
 #endif
 }
 
-void Octree::updateNode(uint32_t index, LeafNode node)
+void Octree::updateNode(uint32_t index, LeafNode1 node)
 {
 #ifdef DEBUG_STRUCTURE
-    m_data[index].update(node.toRaw(), Type::LEAF_NODE);
+    m_data[index].update(node.toRaw(), Type::LEAF_NODE1);
+#else
+    m_data[index] = node.toRaw();
+#endif
+}
+
+void Octree::updateNode(uint32_t index, LeafNode2 node)
+{
+#ifdef DEBUG_STRUCTURE
+    m_data[index].update(node.toRaw(), Type::LEAF_NODE2);
 #else
     m_data[index] = node.toRaw();
 #endif
@@ -560,11 +698,11 @@ void Octree::populate(const AABB nodeShape, void* processData)
     }
     if (ref.isLeaf)
     {
-        addNode(LeafNode(ref.data));
+        addNode(LeafNode1(ref.data1));
     }
     else
     {
-        BranchNode node{ref.data};
+        BranchNode node{ref.data1};
         uint32_t childPtr = getSize() - ref.childPos;
         if (getSize() - ref.childPos > NEAR_PTR_MAX)
         {
@@ -600,8 +738,10 @@ uint32_t Octree::get(const uint32_t index) const
     {
     case Type::BRANCH_NODE:
         return m_data[index].data.branchNode.toRaw();
-    case Type::LEAF_NODE:
-        return m_data[index].data.leafNode.toRaw();
+    case Type::LEAF_NODE1:
+        return m_data[index].data.leafNode1.toRaw();
+    case Type::LEAF_NODE2:
+        return m_data[index].data.leafNode2.toRaw();
     case Type::FAR_NODE:
         return m_data[index].data.farNode.toRaw();
 }

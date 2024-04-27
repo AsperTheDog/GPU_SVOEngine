@@ -1,2 +1,2 @@
 # GPU_SVOEngine
-A reimplementation of the SVOEngine voxel engine using the GPU via Vulkan
+A reimplementation and improvement of the [SVOEngine](https://github.com/AsperTheDog/SVOEngine) voxel engine using the GPU via Vulkan

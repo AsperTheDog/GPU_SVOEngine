@@ -334,7 +334,7 @@ NodeRef Octree::populateRec(AABB nodeShape, const uint8_t currentDepth, void* pr
         childShape.center += childPositions[i] * childShape.halfSize;
         children[i] = populateRec(childShape, currentDepth + 1, processData);
         if (currentDepth == 0)
-            Logger::print("Finished processing root child " + std::to_string(i), Logger::DEBUG);
+            Logger::print("Finished processing root child " + std::to_string(i), Logger::INFO);
 
         node.childMask.setBit(i, children[i].exists);
         node.leafMask.setBit(i, children[i].isLeaf);

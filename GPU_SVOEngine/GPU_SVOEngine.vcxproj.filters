@@ -47,6 +47,9 @@
     <ClInclude Include="src\Octree\octree.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\Octree\octree_generation.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="GPU_SVOEngine.rc">

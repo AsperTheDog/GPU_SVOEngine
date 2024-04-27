@@ -5,7 +5,7 @@
 
 #include <glm/glm.hpp>
 
-enum { NEAR_PTR_MAX = 0x0010 };
+enum { NEAR_PTR_MAX = 0x7FFF };
 
 #ifdef _DEBUG
 #define DEBUG_STRUCTURE
@@ -162,9 +162,12 @@ public:
     explicit Octree(uint8_t maxDepth);
     Octree (uint8_t maxDepth, std::string_view outputFile);
 
+    [[nodiscard]] uint32_t getRaw(uint32_t index) const;
+
     [[nodiscard]] uint32_t getSize() const;
     [[nodiscard]] uint32_t getByteSize() const;
     [[nodiscard]] uint8_t getDepth() const;
+    [[nodiscard]] bool isReversed() const;
 
     void preallocate(size_t size);
     void generate(ProcessFunc func, void* processData);
@@ -184,6 +187,7 @@ public:
 
 #ifdef DEBUG_STRUCTURE
     [[nodiscard]] std::string toString() const;
+    [[nodiscard]] Type getType(uint32_t index) const;
 #endif
 
 private:
@@ -204,6 +208,7 @@ private:
     uint8_t depth = 0;
     ProcessFunc process = nullptr;
     std::string dumpFile;
+    bool reversed = false;
 
     OctreeStats stats{};
 };

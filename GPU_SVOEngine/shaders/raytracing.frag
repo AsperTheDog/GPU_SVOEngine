@@ -162,19 +162,6 @@ uint getMemoryPosOfChild(BranchNode node, uint child)
     return count;
 }
 
-uint getTrueAddress(BranchNode node)
-{
-    uint tail = octree.length() - 1;
-    if (node.farFlag == 0)
-    {
-        return node.address;
-    }
-    else
-    {
-        return octree[tail - node.address];
-    }
-}
-
 void traceRay(inout Ray ray)
 {
     StackElem[20] stack;
@@ -200,7 +187,9 @@ void traceRay(inout Ray ray)
         if (intersect(ray, pos, pos + vec3(size)))
         {
             BranchNode parent = parseBranch(octree[stack[stackPtr].index]);
-            uint nextAddress = stack[stackPtr].index + getTrueAddress(parent) + getMemoryPosOfChild(parent, current);
+            uint absAddress = stack[stackPtr].index + parent.address;
+            uint trueAddress = parent.farFlag == 0 ? absAddress : absAddress + octree[absAddress];
+            uint nextAddress = trueAddress + getMemoryPosOfChild(parent, current);
             if ((parent.leafMask & (1 << current)) != 0)
             {
                 ray.coll = Collision(true, octree[nextAddress]);

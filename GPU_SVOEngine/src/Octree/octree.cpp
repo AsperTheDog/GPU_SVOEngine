@@ -235,13 +235,13 @@ std::string DebugOctreeNode::toString(uint32_t position, const Type type) const
 #endif
 
 Octree::Octree(const uint8_t maxDepth)
-    : depth(maxDepth)
+    : m_depth(maxDepth)
 {
 
 }
 
 Octree::Octree(const uint8_t maxDepth, const std::string_view outputFile)
-    : depth(maxDepth), dumpFile(outputFile)
+    : m_depth(maxDepth), m_dumpFile(outputFile)
 {
 
 }
@@ -251,57 +251,75 @@ uint32_t Octree::getRaw(uint32_t index) const
 #ifdef DEBUG_STRUCTURE
     return data[index].pack(types[index]);
 #else
-    return data[index];
+    return m_data[index];
 #endif
 }
 
 uint32_t Octree::getSize() const
 {
-    return static_cast<uint32_t>(data.size());
+    return static_cast<uint32_t>(m_data.size());
 }
 
 uint32_t Octree::getByteSize() const
 {
-    return static_cast<uint32_t>(data.size()) * sizeof(uint32_t);
+    return static_cast<uint32_t>(m_data.size()) * sizeof(uint32_t);
 }
 
 uint8_t Octree::getDepth() const
 {
-    return depth;
+    return m_depth;
 }
 
 bool Octree::isReversed() const
 {
-    return reversed;
+    return m_reversed;
+}
+
+OctreeStats Octree::getStats() const
+{
+    return m_stats;
+}
+
+bool Octree::isOctreeLoadedFromFile() const
+{
+    return m_loadedFromFile;
 }
 
 void Octree::preallocate(const size_t size)
 {
-    data.reserve(size);
+    m_data.reserve(size);
 }
 
 void Octree::generate(const ProcessFunc func, void* processData)
 {
-    data.clear();
-    reversed = true;
-    process = func;
-    stats = OctreeStats{};
+    m_data.clear();
+    m_stats = OctreeStats{};
+    m_loadedFromFile = false;
+    m_reversed = true;
+    m_process = func;
     const std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
-    populate({ glm::vec3{0}, glm::vec3(static_cast<float>(1 << depth)) }, processData);
+    populate({ glm::vec3{0}, glm::vec3(static_cast<float>(1 << m_depth)) }, processData);
     const std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
-    stats.constructionTime = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) / 1000.f;
-    Logger::print("Octree generated in " + std::to_string(stats.constructionTime) + "s", Logger::INFO);
+    m_stats.constructionTime = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) / 1000.f;
 
-    // Dump to file if specified
-    if (!dumpFile.empty())
+    if (!m_dumpFile.empty())
     {
-        dump(dumpFile);
+        dump(m_dumpFile);
+        const std::chrono::high_resolution_clock::time_point fileEnd = std::chrono::high_resolution_clock::now();
+        m_stats.saveTime = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(fileEnd - end).count()) / 1000.f;
     }
+
+    Logger::print("Octree stats:\n", Logger::INFO);
+    Logger::print("  Nodes: " + std::to_string(getSize()), Logger::INFO);
+    Logger::print("  Voxel nodes: " + std::to_string(m_stats.voxels), Logger::INFO);
+    Logger::print("  Far pointers: " + std::to_string(m_stats.farPtrs), Logger::INFO);
+    Logger::print("  Construction time: " + std::to_string(m_stats.constructionTime) + "s", Logger::INFO);
+    Logger::print("  Save time: " + std::to_string(m_stats.saveTime) + "s", Logger::INFO);
 }
 
 NodeRef Octree::populateRec(AABB nodeShape, const uint8_t currentDepth, void* processData)
 {
-    NodeRef ref = process(nodeShape, currentDepth, depth, processData);
+    NodeRef ref = m_process(nodeShape, currentDepth, m_depth, processData);
     if (!ref.exists || ref.isLeaf)
         return ref;
 
@@ -314,6 +332,8 @@ NodeRef Octree::populateRec(AABB nodeShape, const uint8_t currentDepth, void* pr
         nodeShape.halfSize *= 0.5f;
         nodeShape.center += childPositions[i] * nodeShape.halfSize;
         children[i] = populateRec(nodeShape, currentDepth + 1, processData);
+        if (currentDepth == 0)
+            Logger::print("Finished processing root child " + std::to_string(i), Logger::DEBUG);
 
         node.childMask.setBit(i, children[i].exists);
         node.leafMask.setBit(i, children[i].isLeaf);
@@ -353,6 +373,7 @@ NodeRef Octree::populateRec(AABB nodeShape, const uint8_t currentDepth, void* pr
     {
         if (!farMask.getBit(i)) continue;
         const FarNode ptr = FarNode(getSize() - children[i].childPos);
+        m_stats.farPtrs++;
         addresses[i] = children[i].pos - getSize();
         addNode(ptr);
     }
@@ -364,6 +385,7 @@ NodeRef Octree::populateRec(AABB nodeShape, const uint8_t currentDepth, void* pr
         if (children[i].isLeaf)
         {
             addNode(LeafNode(children[i].data));
+            m_stats.voxels++;
         }
         else
         {
@@ -390,9 +412,9 @@ NodeRef Octree::populateRec(AABB nodeShape, const uint8_t currentDepth, void* pr
 
 void Octree::pack()
 {
-    for (size_t i = farPtrs.size(); i != 0; i--)
+    for (size_t i = m_farPtrs.size(); i != 0; i--)
     {
-        addNode(FarNode(farPtrs[i - 1].destinationPos));
+        addNode(FarNode(m_farPtrs[i - 1].destinationPos));
     }
 }
 
@@ -404,7 +426,7 @@ void Octree::addNode(const BranchNode child)
     data.push_back(node);
     types.push_back(Type::BRANCH_NODE);
 #else
-    data.push_back(child.toRaw());
+    m_data.push_back(child.toRaw());
 #endif
 }
 
@@ -416,7 +438,7 @@ void Octree::addNode(const LeafNode child)
     data.push_back(node);
     types.push_back(Type::LEAF_NODE);
 #else
-    data.push_back(child.toRaw());
+    m_data.push_back(child.toRaw());
 #endif
 }
 
@@ -428,7 +450,7 @@ void Octree::addNode(const FarNode child)
     data.push_back(node);
     types.push_back(Type::FAR_NODE);
 #else
-    data.push_back(child.toRaw());
+    m_data.push_back(child.toRaw());
 #endif
 }
 
@@ -437,7 +459,7 @@ void Octree::updateNode(uint32_t index, BranchNode node)
 #ifdef DEBUG_STRUCTURE
     data[index].update(node.toRaw(), Type::BRANCH_NODE);
 #else
-    data[index] = node.toRaw();
+    m_data[index] = node.toRaw();
 #endif
 }
 
@@ -446,7 +468,7 @@ void Octree::updateNode(uint32_t index, LeafNode node)
 #ifdef DEBUG_STRUCTURE
     data[index].update(node.toRaw(), Type::LEAF_NODE);
 #else
-    data[index] = node.toRaw();
+    m_data[index] = node.toRaw();
 #endif
 }
 
@@ -455,47 +477,81 @@ void Octree::updateNode(uint32_t index, FarNode node)
 #ifdef DEBUG_STRUCTURE
     data[index].update(node.toRaw(), Type::FAR_NODE);
 #else
-    data[index] = node.toRaw();
+    m_data[index] = node.toRaw();
 #endif
 }
 
 NearPtr Octree::pushFarPtr(const uint32_t sourcePos, const uint32_t destinationPos, const uint32_t farNodePos)
 {
-    farPtrs.push_back({ sourcePos, destinationPos, farNodePos });
-    return NearPtr(static_cast<uint16_t>(farPtrs.size() - 1), true);
+    m_farPtrs.push_back({ sourcePos, destinationPos, farNodePos });
+    return NearPtr(static_cast<uint16_t>(m_farPtrs.size() - 1), true);
 }
 
 void* Octree::getData()
 {
-    return data.data();
+    return m_data.data();
 }
 
-void Octree::dump(const std::string& filename) const
+void Octree::dump(const std::string_view filename) const
 {
-    std::ofstream file(filename, std::ios::binary);
-    if (!reversed)
-        file.write(reinterpret_cast<const char*>(data.data()), getByteSize());
+    std::ofstream file(filename.data(), std::ios::binary);
+    const size_t size = getSize();
+    file.write(reinterpret_cast<const char*>(&size), sizeof(size_t));
+    file.write(reinterpret_cast<const char*>(&m_stats), sizeof(OctreeStats));
+    if (!m_reversed)
+        file.write(reinterpret_cast<const char*>(m_data.data()), getByteSize());
     else
     {
-        for (uint32_t i = 1; i <= data.size(); i++)
+        for (uint32_t i = 1; i <= m_data.size(); i++)
         {
-            const uint32_t raw = data[getSize() - i];
+#ifdef DEBUG_STRUCTURE
+            const uint32_t raw = data[getSize() - i].pack(types[getSize() - i]);
+#else
+            const uint32_t raw = m_data[getSize() - i];
+#endif
             file.write(reinterpret_cast<const char*>(&raw), sizeof(uint32_t));
         }
     }
     file.close();
 }
 
+void Octree::load(const std::string_view filename)
+{
+    m_data.clear();
+    m_stats = OctreeStats{};
+    const std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
+    if (filename.empty())
+    {
+        if (m_dumpFile.empty())
+        {
+            Logger::print("No filename provided for octree loading", Logger::ERR);
+            return;
+        }
+        load(m_dumpFile);
+        return;
+    }
+    std::ifstream file(filename.data(), std::ios::binary);
+    size_t size;
+    file.read(reinterpret_cast<char*>(&size), sizeof(size));
+    file.read(reinterpret_cast<char*>(&m_stats), sizeof(OctreeStats));
+    m_data.resize(size);
+    file.read(reinterpret_cast<char*>(m_data.data()), getByteSize());
+    file.close();
+    const std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
+    m_stats.saveTime = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) / 1000.f;
+    m_loadedFromFile = true;
+}
+
 void Octree::clear()
 {
-    data.clear();
-    farPtrs.clear();
-    depth = 0;
+    m_data.clear();
+    m_farPtrs.clear();
+    m_depth = 0;
 }
 
 void Octree::populate(AABB nodeShape, void* processData)
 {
-    const NodeRef ref = populateRec({ glm::vec3{0}, glm::vec3(static_cast<float>(1 << depth)) }, 0, processData);
+    const NodeRef ref = populateRec({ glm::vec3{0}, glm::vec3(static_cast<float>(1 << m_depth)) }, 0, processData);
     if (!ref.exists)
     {
         Logger::print("Octree generation returned non-existent root. Resulting octree is empty or broken", Logger::WARN);
@@ -553,6 +609,6 @@ uint32_t Octree::get(const uint32_t index) const
 #else
 uint32_t& Octree::get(const uint32_t index)
 {
-    return data[index];
+    return m_data[index];
 }
 #endif

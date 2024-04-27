@@ -114,6 +114,7 @@ struct DebugOctreeNode
         Data();
     } data;
 
+    DebugOctreeNode() = default;
     explicit DebugOctreeNode(Type type);
     void update(uint32_t raw, Type type);
     [[nodiscard]] uint32_t pack(Type type) const;
@@ -152,6 +153,7 @@ struct OctreeStats
     uint64_t voxels = 0;
     uint64_t farPtrs = 0;
     float constructionTime = 0;
+    float saveTime = 0;
 };
 
 typedef NodeRef(*ProcessFunc)(const AABB&, uint8_t, uint8_t, void*);
@@ -168,6 +170,8 @@ public:
     [[nodiscard]] uint32_t getByteSize() const;
     [[nodiscard]] uint8_t getDepth() const;
     [[nodiscard]] bool isReversed() const;
+    [[nodiscard]] OctreeStats getStats() const;
+    [[nodiscard]] bool isOctreeLoadedFromFile() const;
 
     void preallocate(size_t size);
     void generate(ProcessFunc func, void* processData);
@@ -181,7 +185,8 @@ public:
     NearPtr pushFarPtr(uint32_t sourcePos, uint32_t destinationPos, uint32_t farNodePos);
 
     void* getData();
-    void dump(const std::string& filename) const;
+    void dump(std::string_view filename) const;
+    void load(std::string_view filename = "");
 
     void clear();
 
@@ -199,17 +204,18 @@ private:
     std::vector<Type> types;
     [[nodiscard]] uint32_t get(uint32_t index) const;
 #else
-    std::vector<uint32_t> data;
+    std::vector<uint32_t> m_data;
     uint32_t& get(uint32_t index);
 #endif
-    std::vector<FarNodeRef> farPtrs;
+    std::vector<FarNodeRef> m_farPtrs;
 
-    size_t sizePtr = 0;
-    uint8_t depth = 0;
-    ProcessFunc process = nullptr;
-    std::string dumpFile;
-    bool reversed = false;
+    size_t m_sizePtr = 0;
+    uint8_t m_depth = 0;
+    ProcessFunc m_process = nullptr;
+    std::string m_dumpFile;
+    bool m_reversed = false;
+    bool m_loadedFromFile = false;
 
-    OctreeStats stats{};
+    OctreeStats m_stats{};
 };
 

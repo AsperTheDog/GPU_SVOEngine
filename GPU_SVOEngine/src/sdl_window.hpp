@@ -52,6 +52,7 @@ public:
 	[[nodiscard]] Signal<uint32_t>& getKeyPressedSignal();
 	[[nodiscard]] Signal<uint32_t>& getKeyReleasedSignal();
 	[[nodiscard]] Signal<float>& getEventsProcessedSignal();
+    [[nodiscard]] Signal<bool>& getMouseCaptureChangedSignal();
 
 private:
 
@@ -61,11 +62,12 @@ private:
     VkInstance m_instance = nullptr;
 
 	// Signals
-	Signal<VkExtent2D> m_resizeSignal;
-	Signal<int32_t, int32_t> m_mouseMoved;
-	Signal<uint32_t> m_keyPressed;
-	Signal<uint32_t> m_keyReleased;
-	Signal<float> m_eventsProcessed;
+	Signal<VkExtent2D> m_resizeSignal; //WindowSize
+	Signal<int32_t, int32_t> m_mouseMoved; // relX, relY, isMouseCaptured
+	Signal<uint32_t> m_keyPressed; // key, isMouseCaptured
+	Signal<uint32_t> m_keyReleased; // key, isMouseCaptured
+	Signal<float> m_eventsProcessed; // delta
+    Signal<bool> m_mouseCaptureChanged; // isMouseCaptured
 
 	float prevDt = 0.f;
 	float dt = 0.f;

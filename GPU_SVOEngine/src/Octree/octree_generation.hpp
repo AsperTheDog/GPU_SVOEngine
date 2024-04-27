@@ -10,9 +10,9 @@ struct RandomData
 
 inline glm::vec3 shiftColor(const glm::vec3 color)
 {
-    float r = std::min(std::max(color.r + (rand() % 2 == 0 ? 0.4f : -0.4f), 0.0f), 15.0f);
-    float g = std::min(std::max(color.g + (rand() % 2 == 0 ? 0.4f : -0.4f), 0.0f), 15.0f);
-    float b = std::min(std::max(color.b + (rand() % 2 == 0 ? 0.4f : -0.4f), 0.0f), 15.0f);
+    float r = std::min(std::max(color.r + (rand() % 2 == 0 ? 0.8f : -0.8f), 0.0f), 15.0f);
+    float g = std::min(std::max(color.g + (rand() % 2 == 0 ? 0.8f : -0.8f), 0.0f), 15.0f);
+    float b = std::min(std::max(color.b + (rand() % 2 == 0 ? 0.8f : -0.8f), 0.0f), 15.0f);
     return { r, g, b };
 }
 

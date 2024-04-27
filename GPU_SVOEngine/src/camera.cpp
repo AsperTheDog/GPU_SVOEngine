@@ -106,6 +106,7 @@ Camera::Data Camera::getData()
 
 void Camera::mouseMoved(const int32_t relX, const int32_t relY)
 {
+    if (!m_isMouseCaptured) return;
 	m_yaw += static_cast<float>(relX) * m_mouseSensitivity;
     m_pitch -= static_cast<float>(relY) * m_mouseSensitivity;
 
@@ -127,6 +128,16 @@ void Camera::mouseMoved(const int32_t relX, const int32_t relY)
 
 void Camera::keyPressed(const uint32_t key)
 {
+    if (!m_isMouseCaptured)
+    {
+        m_wPressed = false;
+        m_sPressed = false;
+        m_aPressed = false;
+        m_dPressed = false;
+        m_spacePressed = false;
+        m_shiftPressed = false;
+        return;
+    }
 	switch (key)
 	{
 	case SDLK_w:
@@ -216,4 +227,9 @@ void Camera::updateEvents(const float delta)
 void Camera::calculateRightVector()
 {
 	m_right = glm::normalize(glm::cross(m_front, glm::vec3(0.0f, 1.0f, 0.0f)));
+}
+
+void Camera::setMouseCaptured(const bool captured)
+{
+    m_isMouseCaptured = captured;
 }

@@ -107,6 +107,7 @@ Engine::~Engine()
 
 void Engine::configureOctreeBuffer(Octree& octree, const float scale)
 {
+    m_octree = &octree;
     {
         if (m_octreeBuffer != UINT32_MAX)
         {
@@ -117,7 +118,7 @@ void Engine::configureOctreeBuffer(Octree& octree, const float scale)
 
         m_octreeBuffer = VulkanContext::getDevice(m_deviceID).createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
         VulkanContext::getDevice(m_deviceID).getBuffer(m_octreeBuffer).allocateFromFlags({ VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, false });
-
+        m_octreeBufferSize = VulkanContext::getDevice(m_deviceID).getBuffer(m_octreeBuffer).getSize();
 
         bool transientConfig = false;
         if (!VulkanContext::getDevice(m_deviceID).isStagingBufferConfigured())
@@ -356,14 +357,7 @@ void Engine::setupInputEvents()
     m_window.getKeyPressedSignal().connect(&cam, &Camera::keyPressed);
     m_window.getKeyReleasedSignal().connect(&cam, &Camera::keyReleased);
     m_window.getEventsProcessedSignal().connect(&cam, &Camera::updateEvents);
-    m_window.getKeyPressedSignal().connect([&](const uint32_t key)
-        {
-            if (key == SDLK_g)
-            {
-                m_window.toggleMouseCapture();
-            }
-        });
-
+    m_window.getMouseCaptureChangedSignal().connect(&cam, &Camera::setMouseCaptured);
     m_window.getResizedSignal().connect([&](const VkExtent2D extent)
         {
             VulkanContext::getDevice(m_deviceID).waitIdle();
@@ -438,5 +432,27 @@ void Engine::drawImgui() const
     ImGui::Begin("Metrics");
     ImGui::Text("%.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
 
+    ImGui::End();
+    ImGui::Begin("Octree stats");
+    if (m_octree->isOctreeLoadedFromFile())
+    {
+        ImGui::Text("Load time: %.4fs", m_octree->getStats().saveTime);
+    }
+    else
+    {
+        ImGui::Text("Construction time: %.4fs", m_octree->getStats().constructionTime);
+        ImGui::Text("Save time: %.4fs", m_octree->getStats().saveTime);
+    }
+    ImGui::Separator();
+    ImGui::Text("Total size: %u nodes", m_octree->getSize());
+    ImGui::Text("Voxel nodes: %llu nodes (%.4f%%)", m_octree->getStats().voxels, static_cast<float>(m_octree->getStats().voxels) / static_cast<float>(m_octree->getSize()) * 100.0f);
+    ImGui::Text("Branch nodes: %llu nodes (%.4f%%)", m_octree->getSize() - m_octree->getStats().voxels, static_cast<float>(m_octree->getSize() - m_octree->getStats().voxels) / static_cast<float>(m_octree->getSize()) * 100.0f);
+    ImGui::Text("Far pointers: %llu nodes (%.4f%%)", m_octree->getStats().farPtrs, static_cast<float>(m_octree->getStats().farPtrs) / static_cast<float>(m_octree->getSize()) * 100.0f);
+    ImGui::Separator();
+    ImGui::Text("Depth: %d", m_octree->getDepth());
+    ImGui::Text("Density: %.4f%%", static_cast<float>(m_octree->getStats().voxels) / static_cast<float>(std::pow(8, m_octree->getDepth())) * 100.0f);
+    ImGui::Separator();
+    ImGui::Text("GPU Memory usage: %s", VulkanMemoryAllocator::compactBytes(m_octreeBufferSize).c_str());
+    ImGui::Text("CPU Memory usage: %s", VulkanMemoryAllocator::compactBytes(m_octree->getByteSize()).c_str());
     ImGui::End();
 }

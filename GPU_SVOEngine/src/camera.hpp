@@ -35,11 +35,12 @@ public:
 	void keyPressed(uint32_t key);
 	void keyReleased(uint32_t key);
 	void updateEvents(float delta);
+    void setMouseCaptured(bool captured);
 
 private:
 	void calculateRightVector();
 
-	float m_movingSpeed = 10.f;
+    float m_movingSpeed = 10.f;
 	float m_mouseSensitivity = 0.1f;
 
 	glm::vec3 m_position;
@@ -66,5 +67,6 @@ private:
 	bool m_dPressed = false;
 	bool m_spacePressed = false;
 	bool m_shiftPressed = false;
+    bool m_isMouseCaptured = true;
 };
 

@@ -19,7 +19,7 @@ public:
 private:
 	void createRenderPass();
 	void createGraphicsPipeline();
-	uint32_t createFramebuffer(const VkImageView colorAttachment, const VkExtent2D newExtent) const;
+	uint32_t createFramebuffer(VkImageView colorAttachment, VkExtent2D newExtent) const;
 	void initImgui() const;
 
 	void setupInputEvents();
@@ -51,5 +51,8 @@ private:
 	uint32_t m_octreeDescrSetLayout = UINT32_MAX;
 	uint32_t m_octreeDescrSet = UINT32_MAX;
     float m_octreeScale = 1.0f;
+
+    Octree* m_octree = nullptr;
+    VkDeviceSize m_octreeBufferSize = 0;
 };
 

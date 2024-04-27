@@ -16,17 +16,17 @@ int main()
 
 	Engine engine{};
 	Octree octree{depth, "assets/octree.bin"};
-    RandomData randomData{0.7f};
-    randomData.color.resize(depth + 1);
-    randomData.color[0] = glm::vec3{8.0f, 3.0f, 8.0f};
-	octree.generate(generateRandomly, &randomData);
+    //RandomData randomData{0.6f};
+    //randomData.color.resize(depth + 1);
+    //randomData.color[0] = glm::vec3{8.0f, 3.0f, 8.0f};
+	//octree.generate(generateRandomly, &randomData);
+    octree.load();
 
-#ifdef DEBUG_STRUCTURE
-    Logger::print(octree.toString(), Logger::LevelBits::DEBUG);
-#endif
+//#ifdef DEBUG_STRUCTURE
+//    Logger::print(octree.toString(), Logger::LevelBits::DEBUG);
+//#endif
 
 	engine.configureOctreeBuffer(octree, 2 * depth);
-    octree.clear();
 	engine.run();
 #ifndef _DEBUG
     }

@@ -1,5 +1,5 @@
 #pragma once
-#include <glm/ext/scalar_constants.hpp>
+#include "voxelizer.hpp"
 
 
 struct RandomData
@@ -36,12 +36,24 @@ inline NodeRef generateRandomly(const AABB& nodeShape, const uint8_t depth, cons
 
     if (nodeRef.isLeaf)
     {
-        LeafNode leafNode{0};
+        LeafNode leafNode{ 0 };
         leafNode.setColor(randomData.color[depth]);
-        leafNode.setNormal(glm::vec3{0.0f, 1.0f, 0.0f});
+        leafNode.setNormal(glm::vec3{ 0.0f, 1.0f, 0.0f });
         nodeRef.data = leafNode.toRaw();
-        nodeRef.isLeaf = true;
     }
 
+    return nodeRef;
+}
+
+// VOXELIZER
+
+inline NodeRef voxelize(const AABB& nodeShape, const uint8_t depth, const uint8_t maxDepth, void* data)
+{
+    Voxelizer& voxelizer = *static_cast<Voxelizer*>(data);
+    NodeRef nodeRef{};
+    nodeRef.isLeaf = depth >= maxDepth;
+    nodeRef.exists = voxelizer.doesAABBInteresect(nodeShape, nodeRef.isLeaf, depth);
+    if (nodeRef.exists && nodeRef.isLeaf)
+        voxelizer.sampleVoxel(nodeRef, depth);
     return nodeRef;
 }

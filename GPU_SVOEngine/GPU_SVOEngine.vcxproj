@@ -142,6 +142,7 @@
     <ClCompile Include="src\camera.cpp" />
     <ClCompile Include="src\Octree\octree.cpp" />
     <ClCompile Include="src\engine.cpp" />
+    <ClCompile Include="src\Octree\voxelizer.cpp" />
     <ClCompile Include="src\sdl_window.cpp" />
     <ClCompile Include="src\main.cpp" />
   </ItemGroup>
@@ -151,6 +152,7 @@
     <ClInclude Include="resource.h" />
     <ClInclude Include="src\Octree\octree_generation.hpp" />
     <ClInclude Include="src\Octree\octree.hpp" />
+    <ClInclude Include="src\Octree\voxelizer.hpp" />
     <ClInclude Include="src\sdl_window.hpp" />
   </ItemGroup>
   <ItemGroup>

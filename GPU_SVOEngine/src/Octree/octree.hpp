@@ -136,7 +136,7 @@ struct NodeRef
 struct AABB
 {
     glm::vec3 center;
-    glm::vec3 halfSize;
+    float halfSize;
 };
 
 struct FarNodeRef
@@ -174,7 +174,7 @@ public:
     [[nodiscard]] bool isOctreeLoadedFromFile() const;
 
     void preallocate(size_t size);
-    void generate(ProcessFunc func, void* processData);
+    void generate(AABB root, ProcessFunc func, void* processData);
     void addNode(BranchNode child);
     void addNode(LeafNode child);
     void addNode(FarNode child);
@@ -200,8 +200,8 @@ private:
     NodeRef populateRec(AABB node, uint8_t currentDepth, void* processData);
 
 #ifdef DEBUG_STRUCTURE
-    std::vector<DebugOctreeNode> data;
-    std::vector<Type> types;
+    std::vector<DebugOctreeNode> m_data;
+    std::vector<Type> m_types;
     [[nodiscard]] uint32_t get(uint32_t index) const;
 #else
     std::vector<uint32_t> m_data;

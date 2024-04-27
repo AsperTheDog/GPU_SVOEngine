@@ -249,7 +249,7 @@ Octree::Octree(const uint8_t maxDepth, const std::string_view outputFile)
 uint32_t Octree::getRaw(uint32_t index) const
 {
 #ifdef DEBUG_STRUCTURE
-    return data[index].pack(types[index]);
+    return m_data[index].pack(m_types[index]);
 #else
     return m_data[index];
 #endif
@@ -290,7 +290,7 @@ void Octree::preallocate(const size_t size)
     m_data.reserve(size);
 }
 
-void Octree::generate(const ProcessFunc func, void* processData)
+void Octree::generate(const AABB root, const ProcessFunc func, void* processData)
 {
     m_data.clear();
     m_stats = OctreeStats{};
@@ -298,7 +298,7 @@ void Octree::generate(const ProcessFunc func, void* processData)
     m_reversed = true;
     m_process = func;
     const std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
-    populate({ glm::vec3{0}, glm::vec3(static_cast<float>(1 << m_depth)) }, processData);
+    populate(root, processData);
     const std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
     m_stats.constructionTime = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) / 1000.f;
 
@@ -329,9 +329,10 @@ NodeRef Octree::populateRec(AABB nodeShape, const uint8_t currentDepth, void* pr
     std::array<NodeRef, 8> children;
     for (int8_t i = 7; i >= 0; i--)
     {
-        nodeShape.halfSize *= 0.5f;
-        nodeShape.center += childPositions[i] * nodeShape.halfSize;
-        children[i] = populateRec(nodeShape, currentDepth + 1, processData);
+        AABB childShape = nodeShape;
+        childShape.halfSize *= 0.5f;
+        childShape.center += childPositions[i] * childShape.halfSize;
+        children[i] = populateRec(childShape, currentDepth + 1, processData);
         if (currentDepth == 0)
             Logger::print("Finished processing root child " + std::to_string(i), Logger::DEBUG);
 
@@ -423,8 +424,8 @@ void Octree::addNode(const BranchNode child)
 #ifdef DEBUG_STRUCTURE
     DebugOctreeNode node(Type::BRANCH_NODE);
     node.data.branchNode = child;
-    data.push_back(node);
-    types.push_back(Type::BRANCH_NODE);
+    m_data.push_back(node);
+    m_types.push_back(Type::BRANCH_NODE);
 #else
     m_data.push_back(child.toRaw());
 #endif
@@ -435,8 +436,8 @@ void Octree::addNode(const LeafNode child)
 #ifdef DEBUG_STRUCTURE
     DebugOctreeNode node(Type::LEAF_NODE);
     node.data.leafNode = child;
-    data.push_back(node);
-    types.push_back(Type::LEAF_NODE);
+    m_data.push_back(node);
+    m_types.push_back(Type::LEAF_NODE);
 #else
     m_data.push_back(child.toRaw());
 #endif
@@ -447,8 +448,8 @@ void Octree::addNode(const FarNode child)
 #ifdef DEBUG_STRUCTURE
     DebugOctreeNode node(Type::FAR_NODE);
     node.data.farNode = child;
-    data.push_back(node);
-    types.push_back(Type::FAR_NODE);
+    m_data.push_back(node);
+    m_types.push_back(Type::FAR_NODE);
 #else
     m_data.push_back(child.toRaw());
 #endif
@@ -457,7 +458,7 @@ void Octree::addNode(const FarNode child)
 void Octree::updateNode(uint32_t index, BranchNode node)
 {
 #ifdef DEBUG_STRUCTURE
-    data[index].update(node.toRaw(), Type::BRANCH_NODE);
+    m_data[index].update(node.toRaw(), Type::BRANCH_NODE);
 #else
     m_data[index] = node.toRaw();
 #endif
@@ -466,7 +467,7 @@ void Octree::updateNode(uint32_t index, BranchNode node)
 void Octree::updateNode(uint32_t index, LeafNode node)
 {
 #ifdef DEBUG_STRUCTURE
-    data[index].update(node.toRaw(), Type::LEAF_NODE);
+    m_data[index].update(node.toRaw(), Type::LEAF_NODE);
 #else
     m_data[index] = node.toRaw();
 #endif
@@ -475,7 +476,7 @@ void Octree::updateNode(uint32_t index, LeafNode node)
 void Octree::updateNode(uint32_t index, FarNode node)
 {
 #ifdef DEBUG_STRUCTURE
-    data[index].update(node.toRaw(), Type::FAR_NODE);
+    m_data[index].update(node.toRaw(), Type::FAR_NODE);
 #else
     m_data[index] = node.toRaw();
 #endif
@@ -505,7 +506,7 @@ void Octree::dump(const std::string_view filename) const
         for (uint32_t i = 1; i <= m_data.size(); i++)
         {
 #ifdef DEBUG_STRUCTURE
-            const uint32_t raw = data[getSize() - i].pack(types[getSize() - i]);
+            const uint32_t raw = m_data[getSize() - i].pack(m_types[getSize() - i]);
 #else
             const uint32_t raw = m_data[getSize() - i];
 #endif
@@ -549,9 +550,9 @@ void Octree::clear()
     m_depth = 0;
 }
 
-void Octree::populate(AABB nodeShape, void* processData)
+void Octree::populate(const AABB nodeShape, void* processData)
 {
-    const NodeRef ref = populateRec({ glm::vec3{0}, glm::vec3(static_cast<float>(1 << m_depth)) }, 0, processData);
+    const NodeRef ref = populateRec(nodeShape, 0, processData);
     if (!ref.exists)
     {
         Logger::print("Octree generation returned non-existent root. Resulting octree is empty or broken", Logger::WARN);
@@ -580,29 +581,29 @@ std::string Octree::toString() const
 {
     std::stringstream ss{};
     ss << "Octree structure:\n";
-    for (uint32_t i = 1; i <= data.size(); i++)
+    for (uint32_t i = 1; i <= m_data.size(); i++)
     {
-        ss << data[getSize() - i].toString(i - 1, types[getSize() - i]) << '\n';
+        ss << m_data[getSize() - i].toString(i - 1, m_types[getSize() - i]) << '\n';
     }
     return ss.str();
 }
 
 Type Octree::getType(const uint32_t index) const
 {
-    return types[index];
+    return m_types[index];
 }
 
 uint32_t Octree::get(const uint32_t index) const
 {
-    const Type type = types[index];
+    const Type type = m_types[index];
     switch (type)
     {
     case Type::BRANCH_NODE:
-        return data[index].data.branchNode.toRaw();
+        return m_data[index].data.branchNode.toRaw();
     case Type::LEAF_NODE:
-        return data[index].data.leafNode.toRaw();
+        return m_data[index].data.leafNode.toRaw();
     case Type::FAR_NODE:
-        return data[index].data.farNode.toRaw();
+        return m_data[index].data.farNode.toRaw();
 }
     return 0;
 }

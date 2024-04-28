@@ -78,7 +78,7 @@ struct LeafNode
     uint64_t uvy : 12;
     uint64_t uvx : 12;
 
-    void setUV(const glm::vec2& uv);
+    void setUV(glm::vec2 uv);
     void setNormal(const glm::vec3& normal);
     void setMaterial(uint16_t material);
 

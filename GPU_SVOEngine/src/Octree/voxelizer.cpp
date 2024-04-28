@@ -7,51 +7,11 @@
 #include <unordered_set>
 #include <glm/gtx/string_cast.hpp>
 #include <glm/gtx/intersect.hpp>
+#include <glm/gtx/norm.hpp>
 
 #include "tiny_obj_loader.h"
+#include "utils/logger.hpp"
 
-template <typename T>
-static int sign(T val)
-{
-    return (T(0) < val) - (val < T(0));
-}
-
-glm::vec3 Triangle::getInterpolationWeights(const glm::vec3 point) const
-{
-    glm::vec3 f1 = v0.pos - point;
-    glm::vec3 f2 = v1.pos - point;
-    glm::vec3 f3 = v2.pos - point;
-    glm::vec3 va = glm::cross(v0.pos - v1.pos, v0.pos - v2.pos);
-    glm::vec3 va1 = glm::cross(f2, f3);
-    glm::vec3 va2 = glm::cross(f3, f1);
-    glm::vec3 va3 = glm::cross(f1, f2);
-    float a = glm::length(va);
-    glm::vec3 weights;
-    weights.x = glm::length(va1) / a * sign(glm::dot(va, va1));
-    weights.y = glm::length(va2) / a * sign(glm::dot(va, va2));
-    weights.z = glm::length(va3) / a * sign(glm::dot(va, va3));
-
-    return weights;
-}
-
-Triangle::WeightData Triangle::getTriangleClosestWeight(const glm::vec3 point) const
-{
-    // Get the normal of the plane formed by the triangle
-    WeightData data;
-    const glm::vec3 normal = glm::normalize(glm::cross(v1.pos - v0.pos, v2.pos - v0.pos));
-    float t;
-    glm::intersectRayPlane(point, normal, v0.pos, normal, t);
-    const glm::vec3 planePoint = point + t * normal;
-    data.weights = getInterpolationWeights(planePoint);
-    if (data.weights.x > 0 && data.weights.y > 0 && data.weights.z > 0)
-    {
-        data.position = planePoint;
-        return data;
-    }
-    //TODO
-
-    return data;
-}
 
 glm::vec2 Triangle::getWeightedUV(const glm::vec3 weights) const
 {
@@ -166,7 +126,7 @@ Voxelizer::Voxelizer(std::string filename, uint8_t maxDepth)
         }
     }
 
-    triangleTree.resize(maxDepth + 1);
+    triangleTree.resize(maxDepth);
 
     for (uint32_t i = 0; i < model.meshes.size(); i++)
     {
@@ -210,18 +170,20 @@ glm::vec3 axisGroup[] = {
     {0, 0, 1}
 };
 
-bool Voxelizer::AABBTriangle6Connect(const glm::vec3 v0, const glm::vec3 v1, const glm::vec3 v2, const AABB shape)
+::TriangleLeafIndex Voxelizer::AABBTriangle6Connect(const TriangleIndex index, const AABB shape) const
 {
     for (auto& axis : axisGroup)
     {
         float t;
-        glm::vec2 baricentric;
-        if (glm::intersectRayTriangle(shape.center, axis, v0, v1, v2, baricentric, t))
+        glm::vec2 bari;
+        std::array<glm::vec3, 3> positions = getTrianglePos(index);
+        if (glm::intersectRayTriangle(shape.center, axis, positions[0], positions[1], positions[2], bari, t))
         {
-            if (std::abs(t) < shape.halfSize) return true;
+            if (std::abs(t) < shape.halfSize) 
+                return {std::abs(t), bari, true, index};
         }
     }
-    return false;
+    return {};
 }
 
 static bool AABBTriangleSAT(const glm::vec3 v0, const glm::vec3 v1, const glm::vec3 v2, const float size, const glm::vec3 axis)
@@ -292,48 +254,52 @@ bool Voxelizer::doesAABBInteresect(const AABB& shape, const bool isLeaf, const u
 {
     if (depth == 0) return true;
 
-    triangleTree[depth].clear();
+    if (!isLeaf) triangleTree[depth].clear();
+    else triangleLeafs.clear();
 
-    for (const TriangleIndex& triangle : triangleTree[depth - 1])
+    for (uint32_t i = 0; i < triangleTree[depth - 1].size(); i++)
     {
-        //if (triangle.isConfined()) continue;
+        const TriangleIndex triangle = triangleTree[depth - 1][i];
+        if (triangle.isConfined()) continue;
 
         std::array<glm::vec3, 3> tri = getTrianglePos(triangle);
-        bool intersects;
-        if (isLeaf) intersects = AABBTriangle6Connect(tri[0], tri[1], tri[2], shape);
-        else intersects = intersectAABBTriangleSAT(tri[0], tri[1], tri[2], shape);
-        if (!intersects) continue;
-        const bool confined = intersectAABBPoint(tri[0], shape) && intersectAABBPoint(tri[1], shape) && intersectAABBPoint(tri[2], shape);
-        TriangleIndex triangleIndex{ triangle.index, confined };
-        triangleTree[depth].push_back(triangleIndex);
+        if (isLeaf)
+        {
+            const TriangleLeafIndex result = AABBTriangle6Connect(triangle, shape);
+            if (!result.hit) continue;
+            triangleLeafs.push_back(result);
+        }
+        else
+        {
+            if (!intersectAABBTriangleSAT(tri[0], tri[1], tri[2], shape)) continue;
+            TriangleIndex triangleIndex{ triangle.index, false };
+            triangleTree[depth].push_back(triangleIndex);
+        }
+        if (intersectAABBPoint(tri[0], shape) && intersectAABBPoint(tri[1], shape) && intersectAABBPoint(tri[2], shape))
+            triangleTree[depth - 1][i].confined = true;
     }
+    if (isLeaf)
+        return !triangleLeafs.empty();
     return !triangleTree[depth].empty();
 }
 
-void Voxelizer::sampleVoxel(AABB shape, NodeRef& node, const uint8_t depth) const
+void Voxelizer::sampleVoxel(NodeRef& node) const
 {
     LeafNode leafNode{ 0 };
-    Triangle closestT;
-    glm::vec3 closestW;
-    float closestD = FLT_MAX;
-    uint16_t closestM = 0;
-    for (const TriangleIndex& triangle : triangleTree[depth])
+    TriangleLeafIndex closestLeaf{};
+    closestLeaf.d = FLT_MAX;
+    for (const TriangleLeafIndex& triangle : triangleLeafs)
     {
-        Triangle t = getTriangle(triangle);
-        auto [weights, position] = t.getTriangleClosestWeight(shape.center);
-        float dist = glm::length(position - shape.center);
-        if (dist < closestD)
+        if (triangle.d < closestLeaf.d)
         {
-            closestD = dist;
-            closestW = weights;
-            closestT = t;
-            closestM = getMaterialID(triangle);
+            closestLeaf = triangle;
         }
     }
-
-    leafNode.setMaterial(closestM);
-    leafNode.setUV(closestT.getWeightedUV(closestW));
-    leafNode.setNormal(closestT.getWeightedNormal(closestW));
+    glm::vec3 weights{closestLeaf.baricentric.x, closestLeaf.baricentric.y, 1.0f - closestLeaf.baricentric.x - closestLeaf.baricentric.y};
+    Triangle closestT = getTriangle(triangles[closestLeaf.index.getIndex()]);
+    leafNode.setMaterial(getMaterialID(closestLeaf.index));
+    leafNode.setUV(closestT.getWeightedUV(weights));
+    leafNode.setNormal(closestT.getWeightedNormal(weights));
     auto [leaf1, leaf2] = leafNode.split();
     node.data1 = leaf1.toRaw();
     node.data2 = leaf2.toRaw();

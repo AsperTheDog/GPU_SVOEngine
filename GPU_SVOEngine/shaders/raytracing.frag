@@ -26,7 +26,7 @@ struct LeafNode
 {
     uint material;
     vec3 normal;
-    vec3 color;
+    vec2 uv;
 };
 
 struct Node
@@ -38,7 +38,7 @@ struct Node
 struct Collision 
 {
     bool hit;
-    uint voxel;
+    LeafNode voxel;
 };
 
 struct Ray
@@ -95,17 +95,16 @@ BranchNode parseBranch(uint node)
 	return n;
 }
 
-LeafNode parseLeaf(uint node)
+LeafNode parseLeaf(uint node1, uint node2)
 {
 	LeafNode n;
-	n.material = (node & 0xFF000000) >> 24;
-    n.normal.x = (node & 0x00F00000) >> 20;
-    n.normal.y = (node & 0x000F0000) >> 16;
-    n.normal.z = (node & 0x0000F000) >> 12;
-    n.color.x =  (node & 0x00000F00) >> 8;
-    n.color.y =  (node & 0x000000F0) >> 4;
-    n.color.z =  (node & 0x0000000F);
-    n.color /= 16.0;
+	n.uv.x = float((node1 & 0xFFF00000) >> 20) / 0x0FFF;
+    n.uv.y = float((node1 & 0x000FFF00) >> 8) / 0x0FFF;
+    n.material = (node1 & 0x000000FF) + ((node2 & 0xC0000000) >> 30);
+    n.normal.x = float((node2 & 0x3FF00000) >> 20);
+    n.normal.y = float((node2 & 0x000FFC00) >> 10);
+    n.normal.z = float(node2 & 0x000003FF);
+    n.normal = n.normal / 0x1FF - 1.0;
     if (n.normal.x != 0.0 || n.normal.y != 0.0 || n.normal.z != 0.0)
         n.normal = normalize(n.normal);
 	return n;
@@ -157,7 +156,11 @@ uint getMemoryPosOfChild(BranchNode node, uint child)
     uint count = 0;
     for (uint i = 0; i < child; i++)
     {
-        if ((node.childMask & (1 << i)) != 0) count++;
+        if ((node.childMask & (1 << i)) != 0) 
+        {
+            if ((node.leafMask & (1 << i)) != 0) count += 2;
+            else count++;
+        }
     }
     return count;
 }
@@ -192,7 +195,7 @@ void traceRay(inout Ray ray)
             uint nextAddress = trueAddress + getMemoryPosOfChild(parent, current);
             if ((parent.leafMask & (1 << current)) != 0)
             {
-                ray.coll = Collision(true, octree[nextAddress]);
+                ray.coll = Collision(true, parseLeaf(octree[nextAddress], octree[nextAddress + 1]));
                 break;
             }
             else
@@ -215,17 +218,16 @@ void main() {
     ray.direction = normalize(homogenize(invPVMatrix * vec4(fragScreenCoord, 1.0, 1.0)) - ray.origin);
     ray.invDirection = 1.0 / ray.direction;
     ray.t = 0.0;
-    ray.coll = Collision(false, 0);
+    ray.coll = Collision(false, parseLeaf(0, 0));
 
     traceRay(ray);
 
     if (ray.coll.hit)
     {
-        LeafNode voxel = parseLeaf(ray.coll.voxel);
-        outColor = vec4(voxel.color, 1.0);
+        outColor = vec4(ray.coll.voxel.normal / 2 + 0.5, 1.0);
     }
     else
     {
-        outColor = vec4(0.0, 0.0, 0.0, 1.0);
+        outColor = vec4(0.1, 0.1, 0.1, 1.0);
     }
 }

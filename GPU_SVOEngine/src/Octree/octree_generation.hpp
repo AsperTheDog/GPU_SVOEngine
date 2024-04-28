@@ -10,9 +10,9 @@ struct RandomData
 
 inline glm::vec3 shiftColor(const glm::vec3 color)
 {
-    float r = std::min(std::max(color.r + (rand() % 2 == 0 ? 0.8f : -0.8f), 0.0f), 15.0f);
-    float g = std::min(std::max(color.g + (rand() % 2 == 0 ? 0.8f : -0.8f), 0.0f), 15.0f);
-    float b = std::min(std::max(color.b + (rand() % 2 == 0 ? 0.8f : -0.8f), 0.0f), 15.0f);
+    float r = std::min(std::max(color.r + (rand() % 2 == 0 ? 50.f : -50.f), 0.0f), 1023.0f);
+    float g = std::min(std::max(color.g + (rand() % 2 == 0 ? 50.f : -50.f), 0.0f), 1023.0f);
+    float b = std::min(std::max(color.b + (rand() % 2 == 0 ? 50.f : -50.f), 0.0f), 1023.0f);
     return { r, g, b };
 }
 
@@ -38,7 +38,7 @@ inline NodeRef generateRandomly(const AABB& nodeShape, const uint8_t depth, cons
     {
         LeafNode leafNode{ 0 };
         leafNode.setUV({nodeShape.center.x, nodeShape.center.y});
-        leafNode.setNormal(glm::vec3{ 0.0f, 1.0f, 0.0f });
+        leafNode.setNormal(glm::vec3(1023.f));
         leafNode.material = 0;
         const std::pair<LeafNode1, LeafNode2> leafs = leafNode.split();
         nodeRef.data1 = leafs.first.toRaw();
@@ -57,6 +57,6 @@ inline NodeRef voxelize(const AABB& nodeShape, const uint8_t depth, const uint8_
     nodeRef.isLeaf = depth >= maxDepth;
     nodeRef.exists = voxelizer.doesAABBInteresect(nodeShape, nodeRef.isLeaf, depth);
     if (nodeRef.exists && nodeRef.isLeaf)
-        voxelizer.sampleVoxel(nodeShape, nodeRef, depth);
+        voxelizer.sampleVoxel(nodeRef);
     return nodeRef;
 }

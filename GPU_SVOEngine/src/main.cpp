@@ -12,16 +12,25 @@ int main()
 #else
     Logger::setLevels(Logger::ALL);
 #endif
-    constexpr uint8_t depth = 12;
+    constexpr uint8_t depth = 11;
 
 	Engine engine{};
+#ifdef DEBUG_STRUCTURE
+    Octree octree{depth, "assets/octreed.bin"};
+#else
 	Octree octree{depth, "assets/octree.bin"};
+#endif
 
-    //RandomData randomData{0.6f};
+    //RandomData randomData{1.0f};
     //randomData.color.resize(depth + 1);
     //randomData.color[0] = glm::vec3{8.0f, 3.0f, 8.0f};
-    Voxelizer voxelizer{"assets/sponza/sponza.obj", depth};
+    //octree.generate({{0.0f, 0.0f, 0.0f}, 1.0f}, generateRandomly, &randomData);
+    Voxelizer voxelizer{"assets/test_cube.obj", depth};
 	octree.generate(voxelizer.getModelAABB(), voxelize, &voxelizer);
+
+#ifdef DEBUG_STRUCTURE
+    Logger::print(octree.toString(), Logger::LevelBits::INFO);
+#endif
 
     //octree.load();
 

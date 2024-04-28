@@ -96,17 +96,25 @@ struct TriangleIndex
     TriangleIndex(uint32_t index, bool confined);
 };
 
+struct TriangleLeafIndex
+{
+    float d = 0;
+    glm::vec2 baricentric{0, 0};
+    bool hit = false;
+    TriangleIndex index{0, false};
+};
+
 class Voxelizer
 {
 public:
     explicit Voxelizer(std::string filename, uint8_t maxDepth);
+    TriangleLeafIndex AABBTriangle6Connect(TriangleIndex index, AABB shape) const;
 
     static bool intersectAABBTriangleSAT(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, AABB shape);
-    static bool AABBTriangle6Connect(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, AABB shape);
     static bool intersectAABBPoint(glm::vec3 point, AABB shape);
 
     bool doesAABBInteresect(const AABB& shape, bool isLeaf, uint8_t depth);
-    void sampleVoxel(AABB shape, NodeRef& node, const uint8_t depth) const;
+    void sampleVoxel(NodeRef& node) const;
     [[nodiscard]] AABB getModelAABB() const;
 
 private:
@@ -122,6 +130,7 @@ private:
 
     std::vector<TriangleRootIndex> triangles;
     std::vector<std::vector<TriangleIndex>> triangleTree;
+    std::vector<TriangleLeafIndex> triangleLeafs;
 
     std::unordered_map<uint32_t, glm::u8vec3> colorMap;
 };

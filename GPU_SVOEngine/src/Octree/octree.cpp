@@ -101,16 +101,21 @@ uint32_t BranchNode::toRaw() const
 
 LeafNode::LeafNode(const uint64_t raw)
 {
-    normalz =  (raw & 0xFFC0000000000000) >> 54;
-    normaly =  (raw & 0x003FF00000000000) >> 44;
-    normalx =  (raw & 0x00000FFC00000000) >> 34;
-    material = (raw & 0x00000003FF000000) >> 24;
-    uvy =      (raw & 0x0000000000FFF000) >> 12;
-    uvx =       raw & 0x0000000000000FFF;
+    uvx =      (raw & 0xFFF0000000000000) >> 52;
+    uvy =      (raw & 0x000FFF0000000000) >> 40;
+    material = (raw & 0x000000FFC0000000) >> 30;
+    normalx =  (raw & 0x000000003FF00000) >> 20;
+    normaly =  (raw & 0x00000000000FFC00) >> 10;
+    normalz =   raw & 0x00000000000003FF;
 }
 
-void LeafNode::setUV(const glm::vec2& uv)
+void LeafNode::setUV(glm::vec2 uv)
 {
+    while (uv.x < 0.f) uv.x += 1.f;
+    while (uv.y < 0.f) uv.y += 1.f;
+    while (uv.x > 1.f) uv.x -= 1.f;
+    while (uv.y > 1.f) uv.y -= 1.f;
+
     constexpr uint16_t max = 0xFFF;
     uvx = std::min(static_cast<uint16_t>(uv.x * max), max);
     uvy = std::min(static_cast<uint16_t>(uv.y * max), max);
@@ -118,10 +123,10 @@ void LeafNode::setUV(const glm::vec2& uv)
 
 void LeafNode::setNormal(const glm::vec3& normal)
 {
-    constexpr uint16_t max = 0x3FF;
-    normalx = std::min(static_cast<uint16_t>(normal.x * max), max);
-    normaly = std::min(static_cast<uint16_t>(normal.y * max), max);
-    normalz = std::min(static_cast<uint16_t>(normal.z * max), max);
+    constexpr uint16_t half_max = 0x200;
+    normalx = std::min(static_cast<uint16_t>(normal.x * half_max) + half_max, 0x3FF);
+    normaly = std::min(static_cast<uint16_t>(normal.y * half_max) + half_max, 0x3FF);
+    normalz = std::min(static_cast<uint16_t>(normal.z * half_max) + half_max, 0x3FF);
 }
 
 void LeafNode::setMaterial(const uint16_t mat)
@@ -147,12 +152,12 @@ uint16_t LeafNode::getMaterial(const LeafNode1 other) const
 uint64_t LeafNode::toRaw() const
 {
     uint64_t raw = 0;
-    raw |= static_cast<uint64_t>(uvx);
-    raw |= static_cast<uint64_t>(uvy) << 12;
-    raw |= static_cast<uint64_t>(material) << 24;
-    raw |= static_cast<uint64_t>(normalx) << 34;
-    raw |= static_cast<uint64_t>(normaly) << 44;
-    raw |= static_cast<uint64_t>(normalz) << 54;
+    raw |= static_cast<uint64_t>(uvx) << 52;
+    raw |= static_cast<uint64_t>(uvy) << 40;
+    raw |= static_cast<uint64_t>(material) << 30;
+    raw |= static_cast<uint64_t>(normalx) << 20;
+    raw |= static_cast<uint64_t>(normaly) << 10;
+    raw |= static_cast<uint64_t>(normalz);
     return raw;
 }
 
@@ -160,7 +165,7 @@ std::pair<LeafNode1, LeafNode2> LeafNode::split() const
 {
     const uint64_t raw = toRaw();
     const uint32_t raw1 = static_cast<uint32_t>((raw & 0xFFFFFFFF00000000) >> 32);
-    const uint32_t raw2 =  static_cast<uint32_t>(raw & 0x00000000FFFFFFFF);
+    const uint32_t raw2 = static_cast<uint32_t>(raw & 0x00000000FFFFFFFF);
     return {LeafNode1{raw1}, LeafNode2{raw2}};
 }
 
@@ -174,9 +179,9 @@ LeafNode LeafNode::combine(const LeafNode1 leafNode1, const LeafNode2 leafNode2)
 
 LeafNode1::LeafNode1(const uint32_t raw)
 {
-    material = (raw & 0xFF000000) >> 24;
-    uvx =      (raw & 0x00FFF000) >> 12;
-    uvy =       raw & 0x00000FFF;
+    uvx =      (raw & 0xFFF00000) >> 20;
+    uvy =      (raw & 0x000FFF00) >> 8;
+    material = (raw & 0x000000FF);
 }
 
 void LeafNode1::setUV(const glm::vec2& uv)
@@ -203,23 +208,23 @@ uint16_t LeafNode1::getMaterial(const LeafNode2 other) const
 
 uint32_t LeafNode1::toRaw() const
 {
-    return uvx << 24 | uvy << 12 | material;
+    return uvx << 20 | uvy << 8 | material;
 }
 
 LeafNode2::LeafNode2(const uint32_t raw)
 {
-    normalz =  (raw & 0xFFC00000) >> 22;
-    normaly =  (raw & 0x003FF000) >> 12;
-    normalx =  (raw & 0x00000FFC) >> 2;
-    material = (raw & 0x00000003) >> 1;
+    material = (raw & 0xC0000000) >> 30;
+    normalx =  (raw & 0x3FF00000) >> 20;
+    normaly =  (raw & 0x000FFC00) >> 10;
+    normalz =   raw & 0x000003FF;
 }
 
 void LeafNode2::setNormal(const glm::vec3& normal)
 {
-    constexpr uint16_t max = 0x3FF;
-    normalx = std::min(static_cast<uint16_t>(normal.x * max), max);
-    normaly = std::min(static_cast<uint16_t>(normal.y * max), max);
-    normalz = std::min(static_cast<uint16_t>(normal.z * max), max);
+    constexpr uint16_t half_max = 0x200;
+    normalx = std::min(static_cast<uint16_t>(normal.x * half_max) + half_max, 0x3FF);
+    normaly = std::min(static_cast<uint16_t>(normal.y * half_max) + half_max, 0x3FF);
+    normalz = std::min(static_cast<uint16_t>(normal.z * half_max) + half_max, 0x3FF);
 }
 
 void LeafNode2::setMaterial(const uint16_t mat)
@@ -229,7 +234,12 @@ void LeafNode2::setMaterial(const uint16_t mat)
 
 glm::vec3 LeafNode2::getNormal() const
 {
-    return { static_cast<float>(normalx) / 0x03FF, static_cast<float>(normaly) / 0x03FF, static_cast<float>(normalz) / 0x03FF };
+    constexpr uint16_t half_max = 0x1FF;
+    return {
+        (static_cast<float>(normalx) / half_max - 1.f),
+        (static_cast<float>(normaly) / half_max - 1.f),
+        (static_cast<float>(normalz) / half_max - 1.f)
+    };
 }
 
 uint16_t LeafNode2::getMaterial(const LeafNode1 other) const
@@ -239,7 +249,7 @@ uint16_t LeafNode2::getMaterial(const LeafNode1 other) const
 
 uint32_t LeafNode2::toRaw() const
 {
-    return normalx << 22 | normaly << 12 | normalz << 2 | (material & 0x0002);
+    return (material & 0x0003) << 30 | normalx << 20 | normaly << 10 | normalz;
 }
 
 FarNode::FarNode(const uint32_t raw)
@@ -315,7 +325,9 @@ uint32_t DebugOctreeNode::pack(const Type type) const
 std::string DebugOctreeNode::toString(const uint32_t position, const Type type) const
 {
     std::stringstream ss{};
-    ss << "(" << position << ") ";
+    ss << "(" << position << ")";
+    // add raw data to string as hex
+    ss << "[" << std::hex << std::uppercase << std::setfill('0') << std::setw(8) << pack(type) << "] ";
     switch (type)
     {
     case BRANCH_NODE:
@@ -331,7 +343,7 @@ std::string DebugOctreeNode::toString(const uint32_t position, const Type type) 
         ss << "material: " << data.leafNode1.material << " }";
         break;
     case LEAF_NODE2:
-        ss << "LeafNode1: {";
+        ss << "LeafNode2: {";
         ss << "material: " << data.leafNode2.material << ", ";
         ss << "normal: " << glm::to_string(data.leafNode2.getNormal()) << " }";
         break;
@@ -469,7 +481,12 @@ NodeRef Octree::populateRec(const AABB nodeShape, const uint8_t currentDepth, vo
             if (!children[i].exists) continue;
             children[i].pos = getSize() + validChildCount + farCount;
             validChildCount++;
-            if (children[i].isLeaf) continue;
+            if (children[i].isLeaf)
+            {
+                children[i].pos++;
+                validChildCount++;
+                continue;
+            }
             addresses[i] = children[i].pos - children[i].childPos;
             if (addresses[i] > NEAR_PTR_MAX && farMask.getBit(i) == false)
             {
@@ -495,6 +512,7 @@ NodeRef Octree::populateRec(const AABB nodeShape, const uint8_t currentDepth, vo
         if (!children[i].exists) continue;
         if (children[i].isLeaf)
         {
+            addNode(LeafNode2(children[i].data2));
             addNode(LeafNode1(children[i].data1));
             m_stats.voxels++;
         }
@@ -698,6 +716,7 @@ void Octree::populate(const AABB nodeShape, void* processData)
     }
     if (ref.isLeaf)
     {
+        addNode(LeafNode2(ref.data2));
         addNode(LeafNode1(ref.data1));
     }
     else

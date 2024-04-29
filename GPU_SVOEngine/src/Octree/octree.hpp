@@ -137,6 +137,30 @@ struct FarNode
     [[nodiscard]] uint32_t toRaw() const;
 };
 
+struct MaterialTextures
+{
+    uint32_t albedoMap: 15;
+    uint32_t albedoFlag: 1;
+    uint32_t normalMap: 15;
+    uint32_t normalFlag: 1;
+};
+
+struct MaterialProperties
+{
+    glm::vec3 color;
+    float roughness;
+    float metallic;
+    float ior;
+    float transmission;
+    float emission;
+};
+
+struct OctreeMaterial
+{
+    MaterialProperties properties;
+    MaterialTextures textures;
+};
+
 #ifdef DEBUG_STRUCTURE
 enum Type : uint8_t
 {
@@ -213,6 +237,8 @@ public:
 
     [[nodiscard]] uint32_t getSize() const;
     [[nodiscard]] uint32_t getByteSize() const;
+    [[nodiscard]] uint32_t getMaterialSize() const;
+    [[nodiscard]] uint32_t getMaterialByteSize() const;
     [[nodiscard]] uint8_t getDepth() const;
     [[nodiscard]] bool isReversed() const;
     [[nodiscard]] OctreeStats getStats() const;
@@ -256,6 +282,8 @@ private:
     uint32_t& get(uint32_t index);
 #endif
     std::vector<FarNodeRef> m_farPtrs;
+
+    std::vector<OctreeMaterial> m_materials;
 
     size_t m_sizePtr = 0;
     uint8_t m_depth = 0;

@@ -15,9 +15,14 @@
 
 struct PushConstantData
 {
+    PushConstantData(const glm::vec4 camPos, const glm::mat4& viewProj, const float scale, const glm::vec3 sunDirection)
+        : camPos(camPos), viewProj(viewProj), scale(scale), sunDirection(sunDirection) { }
+
     glm::vec4 camPos;
     glm::mat4 viewProj;
     float scale;
+    glm::vec3 padding{}; // Unused
+    glm::vec3 sunDirection;
 };
 
 VulkanGPU chooseCorrectGPU()
@@ -305,7 +310,7 @@ void Engine::initImgui() const
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+    //io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
     ImGui::StyleColorsDark();
     ImGuiStyle& style = ImGui::GetStyle();
@@ -400,7 +405,7 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
     const uint32_t layout = VulkanContext::getDevice(m_deviceID).getPipeline(m_pipelineID).getLayout();
 
     const Camera::Data camData = cam.getData();
-    const PushConstantData pushConstants = { camData.position, camData.invPVMatrix, m_octreeScale };
+    const PushConstantData pushConstants{camData.position, camData.invPVMatrix, m_octreeScale, m_sunlightDir};
 
     VulkanCommandBuffer& graphicsBuffer = VulkanContext::getDevice(m_deviceID).getCommandBuffer(m_graphicsCmdBufferID, 0);
     graphicsBuffer.reset();
@@ -425,7 +430,7 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
     Logger::popContext();
 }
 
-void Engine::drawImgui() const
+void Engine::drawImgui()
 {
     const ImGuiIO& io = ImGui::GetIO();
 
@@ -454,5 +459,11 @@ void Engine::drawImgui() const
     ImGui::Separator();
     ImGui::Text("GPU Memory usage: %s", VulkanMemoryAllocator::compactBytes(m_octreeBufferSize).c_str());
     ImGui::Text("CPU Memory usage: %s", VulkanMemoryAllocator::compactBytes(m_octree->getByteSize()).c_str());
+    ImGui::End();
+
+    ImGui::Begin("Settings");
+    ImGui::SliderFloat("Scale", &m_octreeScale, 0.0f, 100.0f);
+    ImGui::SliderFloat3("Sun direction", &m_sunlightDir.x, -1.0f, 1.0f);
+    m_sunlightDir = glm::normalize(m_sunlightDir);
     ImGui::End();
 }

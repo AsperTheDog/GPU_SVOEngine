@@ -108,7 +108,7 @@ class Voxelizer
 {
 public:
     explicit Voxelizer(std::string filename, uint8_t maxDepth);
-    TriangleLeafIndex AABBTriangle6Connect(TriangleIndex index, AABB shape) const;
+    [[nodiscard]] TriangleLeafIndex AABBTriangle6Connect(TriangleIndex index, AABB shape) const;
 
     static bool intersectAABBTriangleSAT(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, AABB shape);
     static bool intersectAABBPoint(glm::vec3 point, AABB shape);

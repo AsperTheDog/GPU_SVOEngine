@@ -20,7 +20,7 @@ glm::vec2 Triangle::getWeightedUV(const glm::vec3 weights) const
 
 glm::vec3 Triangle::getWeightedNormal(const glm::vec3 weights) const
 {
-    return glm::normalize(v0.normal * weights.x + v1.normal * weights.y + v2.normal * weights.z);
+    return v0.normal * weights.x + v1.normal * weights.y + v2.normal * weights.z;
 }
 
 uint16_t TriangleRootIndex::getMaterial() const
@@ -172,6 +172,7 @@ glm::vec3 axisGroup[] = {
 
 ::TriangleLeafIndex Voxelizer::AABBTriangle6Connect(const TriangleIndex index, const AABB shape) const
 {
+    TriangleLeafIndex current{shape.halfSize, {}, false};
     for (auto& axis : axisGroup)
     {
         float t;
@@ -179,11 +180,11 @@ glm::vec3 axisGroup[] = {
         std::array<glm::vec3, 3> positions = getTrianglePos(index);
         if (glm::intersectRayTriangle(shape.center, axis, positions[0], positions[1], positions[2], bari, t))
         {
-            if (std::abs(t) < shape.halfSize) 
-                return {std::abs(t), bari, true, index};
+            if (std::abs(t) < current.d) 
+                current = {std::abs(t), bari, true, index};
         }
     }
-    return {};
+    return current;
 }
 
 static bool AABBTriangleSAT(const glm::vec3 v0, const glm::vec3 v1, const glm::vec3 v2, const float size, const glm::vec3 axis)
@@ -295,7 +296,7 @@ void Voxelizer::sampleVoxel(NodeRef& node) const
             closestLeaf = triangle;
         }
     }
-    glm::vec3 weights{closestLeaf.baricentric.x, closestLeaf.baricentric.y, 1.0f - closestLeaf.baricentric.x - closestLeaf.baricentric.y};
+    glm::vec3 weights{1.0f - closestLeaf.baricentric.x - closestLeaf.baricentric.y, closestLeaf.baricentric.x, closestLeaf.baricentric.y};
     Triangle closestT = getTriangle(triangles[closestLeaf.index.getIndex()]);
     leafNode.setMaterial(getMaterialID(closestLeaf.index));
     leafNode.setUV(closestT.getWeightedUV(weights));

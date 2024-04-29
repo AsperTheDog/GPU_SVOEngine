@@ -4,6 +4,9 @@
 #include "Octree/octree.hpp"
 #include "Octree/octree_generation.hpp"
 
+#define LOAD true
+constexpr uint8_t depth = 12;
+
 int main()
 {
 #ifndef _DEBUG
@@ -12,29 +15,27 @@ int main()
 #else
     Logger::setLevels(Logger::ALL);
 #endif
-    constexpr uint8_t depth = 11;
 
 	Engine engine{};
 #ifdef DEBUG_STRUCTURE
-    Octree octree{depth, "assets/octreed.bin"};
+    Octree octree{depth, "assets/octree.bin"};
 #else
 	Octree octree{depth, "assets/octree.bin"};
 #endif
-
-    //RandomData randomData{1.0f};
-    //randomData.color.resize(depth + 1);
-    //randomData.color[0] = glm::vec3{8.0f, 3.0f, 8.0f};
-    //octree.generate({{0.0f, 0.0f, 0.0f}, 1.0f}, generateRandomly, &randomData);
-    Voxelizer voxelizer{"assets/test_cube.obj", depth};
-	octree.generate(voxelizer.getModelAABB(), voxelize, &voxelizer);
+    if constexpr (!LOAD)
+    {
+        Voxelizer voxelizer{"assets/San_Miguel/san-miguel.obj", depth};
+	    octree.generate(voxelizer.getModelAABB(), voxelize, &voxelizer);
+	}
 
 #ifdef DEBUG_STRUCTURE
     Logger::print(octree.toString(), Logger::LevelBits::INFO);
 #endif
 
-    //octree.load();
+    if constexpr (LOAD) 
+        octree.load();
 
-	engine.configureOctreeBuffer(octree, 2 * depth);
+	engine.configureOctreeBuffer(octree, 7 * depth);
 	engine.run();
 #ifndef _DEBUG
     }

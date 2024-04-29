@@ -123,10 +123,12 @@ void LeafNode::setUV(glm::vec2 uv)
 
 void LeafNode::setNormal(const glm::vec3& normal)
 {
+    constexpr float max = 0x3FF;
     constexpr uint16_t half_max = 0x200;
-    normalx = std::min(static_cast<uint16_t>(normal.x * half_max) + half_max, 0x3FF);
-    normaly = std::min(static_cast<uint16_t>(normal.y * half_max) + half_max, 0x3FF);
-    normalz = std::min(static_cast<uint16_t>(normal.z * half_max) + half_max, 0x3FF);
+    normalx = static_cast<uint16_t>(std::min(normal.x * half_max + half_max, max));
+    normalx = static_cast<uint16_t>(std::min(normal.x * half_max + half_max, max));
+    normaly = static_cast<uint16_t>(std::min(normal.y * half_max + half_max, max));
+    normalz = static_cast<uint16_t>(std::min(normal.z * half_max + half_max, max));
 }
 
 void LeafNode::setMaterial(const uint16_t mat)
@@ -221,10 +223,12 @@ LeafNode2::LeafNode2(const uint32_t raw)
 
 void LeafNode2::setNormal(const glm::vec3& normal)
 {
+    constexpr float max = 0x3FF;
     constexpr uint16_t half_max = 0x200;
-    normalx = std::min(static_cast<uint16_t>(normal.x * half_max) + half_max, 0x3FF);
-    normaly = std::min(static_cast<uint16_t>(normal.y * half_max) + half_max, 0x3FF);
-    normalz = std::min(static_cast<uint16_t>(normal.z * half_max) + half_max, 0x3FF);
+    normalx = static_cast<uint16_t>(std::min(normal.x * half_max + half_max, max));
+    normalx = static_cast<uint16_t>(std::min(normal.x * half_max + half_max, max));
+    normaly = static_cast<uint16_t>(std::min(normal.y * half_max + half_max, max));
+    normalz = static_cast<uint16_t>(std::min(normal.z * half_max + half_max, max));
 }
 
 void LeafNode2::setMaterial(const uint16_t mat)
@@ -387,6 +391,16 @@ uint32_t Octree::getByteSize() const
     return static_cast<uint32_t>(m_data.size()) * sizeof(uint32_t);
 }
 
+uint32_t Octree::getMaterialSize() const
+{
+    return m_materials.size();
+}
+
+uint32_t Octree::getMaterialByteSize() const
+{
+    return static_cast<uint32_t>(m_materials.size()) * sizeof(MaterialProperties);
+}
+
 uint8_t Octree::getDepth() const
 {
     return m_depth;
@@ -514,7 +528,7 @@ NodeRef Octree::populateRec(const AABB nodeShape, const uint8_t currentDepth, vo
         {
             addNode(LeafNode2(children[i].data2));
             addNode(LeafNode1(children[i].data1));
-            m_stats.voxels++;
+            m_stats.voxels += 2;
         }
         else
         {

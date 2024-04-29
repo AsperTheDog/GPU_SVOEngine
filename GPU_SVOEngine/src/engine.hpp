@@ -26,7 +26,7 @@ private:
 
 	void recordCommandBuffer(uint32_t framebufferID, ImDrawData* main_draw_data);
 
-	void drawImgui() const;
+	void drawImgui();
 
 	Camera cam;
 
@@ -51,6 +51,7 @@ private:
 	uint32_t m_octreeDescrSetLayout = UINT32_MAX;
 	uint32_t m_octreeDescrSet = UINT32_MAX;
     float m_octreeScale = 1.0f;
+    glm::vec3 m_sunlightDir{1.0f, 1.0f, 1.0f};
 
     Octree* m_octree = nullptr;
     VkDeviceSize m_octreeBufferSize = 0;

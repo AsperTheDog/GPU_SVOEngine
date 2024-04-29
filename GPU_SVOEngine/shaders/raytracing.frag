@@ -4,6 +4,7 @@ layout ( push_constant ) uniform PushConstants {
 	vec4 camPos;
     mat4 invPVMatrix;
     float octreeScale;
+    vec3 sunDirection;
 };
 
 layout(binding = 0) buffer MyBuffer {
@@ -100,7 +101,7 @@ LeafNode parseLeaf(uint node1, uint node2)
 	LeafNode n;
 	n.uv.x = float((node1 & 0xFFF00000) >> 20) / 0x0FFF;
     n.uv.y = float((node1 & 0x000FFF00) >> 8) / 0x0FFF;
-    n.material = (node1 & 0x000000FF) + ((node2 & 0xC0000000) >> 30);
+    n.material = ((node1 & 0x000000FF) << 2) | ((node2 & 0xC0000000) >> 30);
     n.normal.x = float((node2 & 0x3FF00000) >> 20);
     n.normal.y = float((node2 & 0x000FFC00) >> 10);
     n.normal.z = float(node2 & 0x000003FF);
@@ -224,10 +225,13 @@ void main() {
 
     if (ray.coll.hit)
     {
-        outColor = vec4(ray.coll.voxel.normal / 2 + 0.5, 1.0);
+        vec3 color = vec3(1.0, 1.0, 1.0);
+        vec3 diffuseFinal = color * clamp(dot(normalize(sunDirection.xyz), normalize(ray.coll.voxel.normal)) * 1.0, 0, 1);
+        outColor = vec4(color * 0.05 + diffuseFinal, 1.0);
+        //outColor = vec4(ray.coll.voxel.normal * 0.5 + 0.5, 1.0);
     }
     else
     {
-        outColor = vec4(0.1, 0.1, 0.1, 1.0);
+        outColor = vec4(0.0, 0.0, 0.0, 1.0);
     }
 }

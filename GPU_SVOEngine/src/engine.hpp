@@ -3,13 +3,14 @@
 #include "imgui.h"
 #include "sdl_window.hpp"
 #include "vulkan_queues.hpp"
+#include "vulkan_shader.hpp"
 
 class Octree;
 
 class Engine
 {
 public:
-	Engine();
+    explicit Engine(uint32_t samplerImageCount);
 	~Engine();
 
 	void configureOctreeBuffer(Octree& octree, float scale);
@@ -18,7 +19,7 @@ public:
 
 private:
 	void createRenderPass();
-	void createGraphicsPipeline();
+    uint32_t createGraphicsPipeline(uint32_t samplerImageCount, const std::string& fragmentShader, const std::vector<VulkanShader::MacroDef>& macros);
 	uint32_t createFramebuffer(VkImageView colorAttachment, VkExtent2D newExtent) const;
 	void initImgui() const;
 
@@ -42,6 +43,9 @@ private:
 	uint32_t m_graphicsCmdBufferID = UINT32_MAX;
 	uint32_t m_renderPassID = UINT32_MAX;
 	uint32_t m_pipelineID = UINT32_MAX;
+	uint32_t m_intersectPipelineID = UINT32_MAX;
+	uint32_t m_intersectColorPipelineID = UINT32_MAX;
+    uint32_t m_pipelineLayoutID = UINT32_MAX;
 	std::vector<uint32_t> m_framebuffers{};
 	uint32_t m_renderFinishedSemaphoreID = UINT32_MAX;
 	uint32_t m_inFlightFenceID = UINT32_MAX;
@@ -50,10 +54,20 @@ private:
 	uint32_t m_octreeDescrPool = UINT32_MAX;
 	uint32_t m_octreeDescrSetLayout = UINT32_MAX;
 	uint32_t m_octreeDescrSet = UINT32_MAX;
+    VkDeviceSize m_octreeBufferSize = 0;
+    VkDeviceSize m_octreeMatPadding = 0;
     float m_octreeScale = 1.0f;
-    glm::vec3 m_sunlightDir{1.0f, 1.0f, 1.0f};
+    float m_sunRotation = 0.0f;
+    glm::vec3 m_sunlightDir{1.0f, 1.0f, 0.0f};
+    glm::vec3 m_skyColor{0.0, 1.0, 1.0};
+    glm::vec3 m_sunColor{1.0, 1.0, 1.0};
+    std::vector<std::pair<uint32_t, VkSampler>> m_octreeImages{};
+
+    VkDeviceSize m_octreeImagesMemUsage = 0;
 
     Octree* m_octree = nullptr;
-    VkDeviceSize m_octreeBufferSize = 0;
+
+    bool m_intersectionTest = false;
+    bool m_intersectionTestColor = false;
 };
 

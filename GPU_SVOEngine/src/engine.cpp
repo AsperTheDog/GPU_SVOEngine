@@ -4,6 +4,7 @@
 #include <stdexcept>
 
 #include <imgui.h>
+#include <ranges>
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
@@ -13,16 +14,18 @@
 #include "Octree/octree.hpp"
 #include "vulkan_context.hpp"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+#include <glm/gtx/quaternion.hpp>
+
 struct PushConstantData
 {
-    PushConstantData(const glm::vec4 camPos, const glm::mat4& viewProj, const float scale, const glm::vec3 sunDirection)
-        : camPos(camPos), viewProj(viewProj), scale(scale), sunDirection(sunDirection) { }
-
-    glm::vec4 camPos;
-    glm::mat4 viewProj;
-    float scale;
-    glm::vec3 padding{}; // Unused
-    glm::vec3 sunDirection;
+    alignas(16) glm::vec4 camPos;
+    alignas(16) glm::mat4 viewProj;
+    alignas(4) float scale;
+    alignas(16) glm::vec3 sunDirection;
+    alignas(16) glm::vec3 skyColor;
+    alignas(16) glm::vec3 sunColor;
 };
 
 VulkanGPU chooseCorrectGPU()
@@ -39,13 +42,13 @@ VulkanGPU chooseCorrectGPU()
     throw std::runtime_error("No discrete GPU found");
 }
 
-Engine::Engine() : cam({ 0, 0, 0 }, { 0, 0, 0 }), m_window("Vulkan", 1920, 1080)
+Engine::Engine(const uint32_t samplerImageCount) : cam({ 0, 0, 0 }, { 0, 0, 0 }), m_window("Vulkan", 1920, 1080)
 {
     Logger::setRootContext("Engine init");
 #ifndef _DEBUG
     VulkanContext::init(VK_API_VERSION_1_3, false, false, m_window.getRequiredVulkanExtensions());
 #else
-    VulkanContext::init(VK_API_VERSION_1_3, true, false, m_window.getRequiredVulkanExtensions());
+    VulkanContext::init(VK_API_VERSION_1_3, true, true, m_window.getRequiredVulkanExtensions());
 #endif
     m_window.createSurface(VulkanContext::getHandle());
 
@@ -68,14 +71,16 @@ Engine::Engine() : cam({ 0, 0, 0 }, { 0, 0, 0 }), m_window("Vulkan", 1920, 1080)
     m_deviceID = VulkanContext::createDevice(gpu, selector, { VK_KHR_SWAPCHAIN_EXTENSION_NAME }, {});
     VulkanDevice& device = VulkanContext::getDevice(m_deviceID);
 
-    m_swapchainID = device.createSwapchain(m_window.getSurface(), m_window.getSize().toExtent2D(), { VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR });
+    m_swapchainID = device.createSwapchain(m_window.getSurface(), m_window.getSize().toExtent2D(), { VK_FORMAT_R8G8B8A8_SRGB, VK_COLORSPACE_SRGB_NONLINEAR_KHR });
     const VulkanSwapchain& swapchain = device.getSwapchain(m_swapchainID);
 
     device.configureOneTimeQueue(m_transferQueuePos);
     m_graphicsCmdBufferID = device.createCommandBuffer(graphicsQueueFamily, 0, false);
 
     createRenderPass();
-    createGraphicsPipeline();
+    m_pipelineID = createGraphicsPipeline(samplerImageCount, "shaders/raytracing.frag", {{"SAMPLER_ARRAY_SIZE", std::to_string(samplerImageCount)}});
+    m_intersectPipelineID = createGraphicsPipeline(samplerImageCount, "shaders/raytracing.frag", {{"SAMPLER_ARRAY_SIZE", std::to_string(samplerImageCount)}, {"INTERSECTION_TEST", "true"}});
+    m_intersectColorPipelineID = createGraphicsPipeline(samplerImageCount, "shaders/raytracing.frag", {{"SAMPLER_ARRAY_SIZE", std::to_string(samplerImageCount)}, {"INTERSECTION_TEST", "true"}, {"INTERSECTION_COLOR", "true"}});
 
     m_framebuffers.resize(swapchain.getImageCount());
     for (uint32_t i = 0; i < swapchain.getImageCount(); i++)
@@ -106,6 +111,7 @@ Engine::~Engine()
     m_window.shutdownImgui();
     ImGui::DestroyContext();
 
+    VulkanContext::getDevice(m_deviceID).freeSwapchain(m_swapchainID);
     m_window.free();
     VulkanContext::free();
 }
@@ -113,76 +119,158 @@ Engine::~Engine()
 void Engine::configureOctreeBuffer(Octree& octree, const float scale)
 {
     m_octree = &octree;
+    VulkanDevice& device = VulkanContext::getDevice(m_deviceID);
+    if (octree.isFinished()) 
+        octree.packAndFinish();
+
     {
         if (m_octreeBuffer != UINT32_MAX)
         {
-            VulkanContext::getDevice(m_deviceID).freeBuffer(m_octreeBuffer);
+            device.freeBuffer(m_octreeBuffer);
+            for (const uint32_t& key : m_octreeImages | std::views::keys)
+                device.freeImage(key);
+            m_octreeImages.clear();
         }
-
-        const VkDeviceSize bufferSize = octree.getByteSize();
-
-        m_octreeBuffer = VulkanContext::getDevice(m_deviceID).createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-        VulkanContext::getDevice(m_deviceID).getBuffer(m_octreeBuffer).allocateFromFlags({ VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, false });
-        m_octreeBufferSize = VulkanContext::getDevice(m_deviceID).getBuffer(m_octreeBuffer).getSize();
 
         bool transientConfig = false;
-        if (!VulkanContext::getDevice(m_deviceID).isStagingBufferConfigured())
+        if (!device.isStagingBufferConfigured())
         {
             transientConfig = true;
-            VulkanContext::getDevice(m_deviceID).configureStagingBuffer(100LL * 1024 * 1024, m_transferQueuePos);
+            device.configureStagingBuffer(100LL * 1024 * 1024, m_transferQueuePos);
         }
+        const VkDeviceSize stagingBufferSize = device.getStagingBufferSize();
+
         {
-            VkDeviceSize offset = 0;
-            const VkDeviceSize stagingBufferSize = VulkanContext::getDevice(m_deviceID).getStagingBufferSize();
-            while (offset < octree.getByteSize())
+            VkDeviceSize currentBufferSize = stagingBufferSize;
+            bool resized = false;
+            for (const std::string& imagePath : octree.getMaterialTextures())
             {
-                const VkDeviceSize nextSize = std::min(stagingBufferSize, octree.getByteSize() - offset);
-                void* stagePtr = VulkanContext::getDevice(m_deviceID).mapStagingBuffer(nextSize, 0);
-                if (!octree.isReversed())
-                    memcpy(stagePtr, static_cast<char*>(octree.getData()) + offset, nextSize);
-                else
-                {
-                    const uint32_t offsetUint = static_cast<uint32_t>(offset / sizeof(uint32_t));
-                    const uint32_t nextSizeUint = static_cast<uint32_t>(nextSize / sizeof(uint32_t));
-                    for (uint32_t i = offsetUint; i < offsetUint + nextSizeUint; i++)
-                        static_cast<uint32_t*>(stagePtr)[i - offsetUint] = octree.getRaw(octree.getSize() - 1 - i);
+                int texWidth, texHeight, texChannels;
+                stbi_uc* pixels = stbi_load(imagePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+                const VkDeviceSize imageSize = static_cast<VkDeviceSize>(texWidth) * texHeight * 4;
+                const VkExtent3D extent = { static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight), 1 };
+
+                if (!pixels) {
+                    throw std::runtime_error("failed to load texture image!");
                 }
-                VulkanContext::getDevice(m_deviceID).dumpStagingBuffer(m_octreeBuffer, nextSize, offset, 0);
-                offset += nextSize;
+                
+                {
+                    if (imageSize > currentBufferSize)
+                    {
+                        device.freeStagingBuffer();
+                        device.configureStagingBuffer(imageSize, m_transferQueuePos);
+                        currentBufferSize = imageSize;
+                        resized = true;
+                    }
+                    void* stagePtr = device.mapStagingBuffer(imageSize, 0);
+                    memcpy(stagePtr, pixels, imageSize);
+                    device.unmapStagingBuffer();
+                    stbi_image_free(pixels);
+                }
+
+                const uint32_t imageID = device.createImage(VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, extent, VK_IMAGE_USAGE_TRANSFER_DST_BIT |VK_IMAGE_USAGE_SAMPLED_BIT, 0);
+
+                VulkanImage& image = device.getImage(imageID);
+                image.allocateFromFlags({VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, false});
+                image.transitionLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0);
+                device.dumpStagingBufferToImage(imageID, extent, {0, 0, 0}, 0);
+                image.transitionLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0);
+
+                VkSampler sampler = image.createSampler(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
+                m_octreeImagesMemUsage += image.getMemoryRequirements().size;
+                m_octreeImages.emplace_back(imageID, sampler);
             }
 
+            if (resized)
+            {
+                device.freeStagingBuffer();
+                device.configureStagingBuffer(stagingBufferSize, m_transferQueuePos);
+            }
         }
+
+        m_octreeMatPadding = 16 - octree.getByteSize() % device.getGPU().getProperties().limits.minStorageBufferOffsetAlignment;
+        const VkDeviceSize bufferSize = octree.getByteSize() + m_octreeMatPadding + octree.getMaterialByteSize();
+        m_octreeBuffer = device.createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        device.getBuffer(m_octreeBuffer).allocateFromFlags({ VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, false });
+        m_octreeBufferSize = device.getBuffer(m_octreeBuffer).getSize();
+        
+        VkDeviceSize offset = 0;
+        while (offset < octree.getByteSize())
+        {
+            const VkDeviceSize nextSize = std::min(stagingBufferSize, octree.getByteSize() - offset);
+            void* stagePtr = device.mapStagingBuffer(nextSize, 0);
+            if (!octree.isReversed())
+                memcpy(stagePtr, static_cast<char*>(octree.getData()) + offset, nextSize);
+            else
+            {
+                const uint32_t offsetUint = static_cast<uint32_t>(offset / sizeof(uint32_t));
+                const uint32_t nextSizeUint = static_cast<uint32_t>(nextSize / sizeof(uint32_t));
+                for (uint32_t i = offsetUint; i < offsetUint + nextSizeUint; i++)
+                    static_cast<uint32_t*>(stagePtr)[i - offsetUint] = octree.getRaw(octree.getSize() - 1 - i);
+            }
+            device.dumpStagingBuffer(m_octreeBuffer, nextSize, offset, 0);
+            offset += nextSize;
+        }
+        void* stagePtr = device.mapStagingBuffer(octree.getMaterialByteSize(), 0);
+        memcpy(stagePtr, octree.getMaterialData(), octree.getMaterialByteSize());
+        device.dumpStagingBuffer(m_octreeBuffer, octree.getMaterialByteSize(), octree.getByteSize() + m_octreeMatPadding, 0);
+        
         if (transientConfig)
         {
-            VulkanContext::getDevice(m_deviceID).freeStagingBuffer();
+            device.freeStagingBuffer();
         }
     }
-
+    
+    if (m_octreeDescrPool != UINT32_MAX)
     {
-        if (m_octreeDescrPool != UINT32_MAX)
-        {
-            VulkanContext::getDevice(m_deviceID).freeDescriptorPool(m_octreeDescrPool);
-        }
-
-        m_octreeDescrPool = VulkanContext::getDevice(m_deviceID).createDescriptorPool({ {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1} }, 1, 0);
-        m_octreeDescrSet = VulkanContext::getDevice(m_deviceID).createDescriptorSet(m_octreeDescrPool, m_octreeDescrSetLayout);
-
-        VkDescriptorBufferInfo bufferInfo;
-        bufferInfo.buffer = *VulkanContext::getDevice(m_deviceID).getBuffer(m_octreeBuffer);
-        bufferInfo.offset = 0;
-        bufferInfo.range = VK_WHOLE_SIZE;
-
-        VkWriteDescriptorSet writeDescriptorSet = {};
-        writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writeDescriptorSet.dstSet = *VulkanContext::getDevice(m_deviceID).getDescriptorSet(m_octreeDescrSet);
-        writeDescriptorSet.dstBinding = 0;
-        writeDescriptorSet.dstArrayElement = 0;
-        writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        writeDescriptorSet.descriptorCount = 1;
-        writeDescriptorSet.pBufferInfo = &bufferInfo;
-
-        VulkanContext::getDevice(m_deviceID).getDescriptorSet(m_octreeDescrSet).updateDescriptorSet(writeDescriptorSet);
+        device.freeDescriptorPool(m_octreeDescrPool);
     }
+
+    m_octreeDescrPool = device.createDescriptorPool({ 
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(octree.getMaterialTextures().size())}
+    }, 2, 0);
+    m_octreeDescrSet = device.createDescriptorSet(m_octreeDescrPool, m_octreeDescrSetLayout);
+
+    VkDescriptorBufferInfo bufferInfo[2];
+    bufferInfo[0].buffer = *device.getBuffer(m_octreeBuffer);
+    bufferInfo[0].offset = 0;
+    bufferInfo[0].range = octree.getByteSize();
+    bufferInfo[1].buffer = *device.getBuffer(m_octreeBuffer);
+    bufferInfo[1].offset = octree.getByteSize() + m_octreeMatPadding;
+    bufferInfo[1].range = VK_WHOLE_SIZE;
+
+    std::vector<VkWriteDescriptorSet> writeDescriptorSets{2};
+    writeDescriptorSets[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writeDescriptorSets[0].dstSet = *device.getDescriptorSet(m_octreeDescrSet);
+    writeDescriptorSets[0].dstBinding = 0;
+    writeDescriptorSets[0].dstArrayElement = 0;
+    writeDescriptorSets[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    writeDescriptorSets[0].descriptorCount = 2;
+    writeDescriptorSets[0].pBufferInfo = bufferInfo;
+
+    std::vector<VkDescriptorImageInfo> imageInfos;
+    for (const auto& imageData : m_octreeImages)
+    {
+        const VkImageView view = device.getImage(imageData.first).createImageView(VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfo.imageView = view;
+        imageInfo.sampler = imageData.second;
+        imageInfos.push_back(imageInfo);
+    }
+
+    writeDescriptorSets[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writeDescriptorSets[1].dstSet = *device.getDescriptorSet(m_octreeDescrSet);
+    writeDescriptorSets[1].dstBinding = 2;
+    writeDescriptorSets[1].dstArrayElement = 0;
+    writeDescriptorSets[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    writeDescriptorSets[1].descriptorCount = static_cast<uint32_t>(imageInfos.size());
+    writeDescriptorSets[1].pImageInfo = imageInfos.data();
+
+    device.updateDescriptorSets(writeDescriptorSets);
+    
     m_octreeScale = scale;
 }
 
@@ -259,29 +347,50 @@ void Engine::createRenderPass()
     Logger::popContext();
 }
 
-void Engine::createGraphicsPipeline()
+uint32_t Engine::createGraphicsPipeline(const uint32_t samplerImageCount, const std::string& fragmentShader, const std::vector<VulkanShader::MacroDef>& macros)
 {
     Logger::pushContext("Create Pipeline");
 
-    VkDescriptorSetLayoutBinding octreeBinding{};
-    octreeBinding.binding = 0;
-    octreeBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    octreeBinding.descriptorCount = 1;
-    octreeBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    m_octreeDescrSetLayout = VulkanContext::getDevice(m_deviceID).createDescriptorSetLayout({ octreeBinding }, 0);
+    VulkanDevice& device = VulkanContext::getDevice(m_deviceID);
 
-    std::vector<VkPushConstantRange> pushConstants{ 1 };
-    pushConstants[0] = { VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstantData) };
-    const uint32_t layout = VulkanContext::getDevice(m_deviceID).createPipelineLayout({ m_octreeDescrSetLayout }, pushConstants);
+    if (m_octreeDescrSetLayout == UINT32_MAX)
+    {
+        VkDescriptorSetLayoutBinding octreeBinding{};
+        octreeBinding.binding = 0;
+        octreeBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        octreeBinding.descriptorCount = 1;
+        octreeBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    const uint32_t vertexShader = VulkanContext::getDevice(m_deviceID).createShader("shaders/raytracing.vert", VK_SHADER_STAGE_VERTEX_BIT);
-    const uint32_t fragmentShader = VulkanContext::getDevice(m_deviceID).createShader("shaders/raytracing.frag", VK_SHADER_STAGE_FRAGMENT_BIT);
+        VkDescriptorSetLayoutBinding matBinding{};
+        matBinding.binding = 1;
+        matBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        matBinding.descriptorCount = 1;
+        matBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+        VkDescriptorSetLayoutBinding texBinding{};
+        texBinding.binding = 2;
+        texBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        texBinding.descriptorCount = samplerImageCount;
+        texBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+        m_octreeDescrSetLayout = device.createDescriptorSetLayout({ octreeBinding, matBinding, texBinding }, 0);
+    }
+
+    if (m_pipelineLayoutID)
+    {
+        std::vector<VkPushConstantRange> pushConstants{ 1 };
+        pushConstants[0] = { VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstantData) };
+        m_pipelineLayoutID = device.createPipelineLayout({ m_octreeDescrSetLayout }, pushConstants);
+    }
+
+    const uint32_t vertexShaderID = device.createShader("shaders/raytracing.vert", VK_SHADER_STAGE_VERTEX_BIT, {});
+    const uint32_t fragmentShaderID = device.createShader(fragmentShader, VK_SHADER_STAGE_FRAGMENT_BIT, macros);
 
     VkPipelineColorBlendAttachmentState colorBlendAttachment{};
     colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
     colorBlendAttachment.blendEnable = VK_FALSE;
 
-    VulkanPipelineBuilder builder{ &VulkanContext::getDevice(m_deviceID) };
+    VulkanPipelineBuilder builder{ &device };
 
     builder.setInputAssemblyState(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_FALSE);
     builder.setViewportState(1, 1);
@@ -291,10 +400,15 @@ void Engine::createGraphicsPipeline()
     builder.addColorBlendAttachment(colorBlendAttachment);
     builder.setColorBlendState(VK_FALSE, VK_LOGIC_OP_COPY, { 0.0f, 0.0f, 0.0f, 0.0f });
     builder.setDynamicState({ VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR });
-    builder.addShaderStage(vertexShader);
-    builder.addShaderStage(fragmentShader);
-    m_pipelineID = VulkanContext::getDevice(m_deviceID).createPipeline(builder, layout, m_renderPassID, 0);
+    builder.addShaderStage(vertexShaderID);
+    builder.addShaderStage(fragmentShaderID);
+    const uint32_t pipelineID = device.createPipeline(builder, m_pipelineLayoutID, m_renderPassID, 0);
+
+    device.freeShader(vertexShaderID);
+    device.freeShader(fragmentShaderID);
+
     Logger::popContext();
+    return pipelineID;
 }
 
 uint32_t Engine::createFramebuffer(const VkImageView colorAttachment, const VkExtent2D newExtent) const
@@ -405,7 +519,7 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
     const uint32_t layout = VulkanContext::getDevice(m_deviceID).getPipeline(m_pipelineID).getLayout();
 
     const Camera::Data camData = cam.getData();
-    const PushConstantData pushConstants{camData.position, camData.invPVMatrix, m_octreeScale, m_sunlightDir};
+    const PushConstantData pushConstants{camData.position, camData.invPVMatrix, m_octreeScale, m_sunlightDir, m_skyColor, m_sunColor};
 
     VulkanCommandBuffer& graphicsBuffer = VulkanContext::getDevice(m_deviceID).getCommandBuffer(m_graphicsCmdBufferID, 0);
     graphicsBuffer.reset();
@@ -415,7 +529,13 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
 
     graphicsBuffer.cmdBindDescriptorSet(VK_PIPELINE_BIND_POINT_GRAPHICS, layout, m_octreeDescrSet);
 
-    graphicsBuffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineID);
+    if (m_intersectionTest)
+        if (m_intersectionTestColor)
+            graphicsBuffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, m_intersectColorPipelineID);
+        else
+            graphicsBuffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, m_intersectPipelineID);
+    else
+        graphicsBuffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineID);
     graphicsBuffer.cmdSetViewport(viewport);
     graphicsBuffer.cmdSetScissor(scissor);
 
@@ -449,21 +569,33 @@ void Engine::drawImgui()
         ImGui::Text("Save time: %.4fs", m_octree->getStats().saveTime);
     }
     ImGui::Separator();
-    ImGui::Text("Total size: %u nodes", m_octree->getSize());
-    ImGui::Text("Voxel nodes: %llu nodes (%.4f%%)", m_octree->getStats().voxels, static_cast<float>(m_octree->getStats().voxels) / static_cast<float>(m_octree->getSize()) * 100.0f);
-    ImGui::Text("Branch nodes: %llu nodes (%.4f%%)", m_octree->getSize() - m_octree->getStats().voxels, static_cast<float>(m_octree->getSize() - m_octree->getStats().voxels) / static_cast<float>(m_octree->getSize()) * 100.0f);
-    ImGui::Text("Far pointers: %llu nodes (%.4f%%)", m_octree->getStats().farPtrs, static_cast<float>(m_octree->getStats().farPtrs) / static_cast<float>(m_octree->getSize()) * 100.0f);
+    ImGui::Text("Total nodes: %u nodes", m_octree->getSize());
+    ImGui::Text(" - Voxel nodes: %llu nodes (%.4f%%)", m_octree->getStats().voxels, static_cast<float>(m_octree->getStats().voxels) / static_cast<float>(m_octree->getSize()) * 100.0f);
+    ImGui::Text(" - Branch nodes: %llu nodes (%.4f%%)", m_octree->getSize() - m_octree->getStats().voxels, static_cast<float>(m_octree->getSize() - m_octree->getStats().voxels) / static_cast<float>(m_octree->getSize()) * 100.0f);
+    ImGui::Text(" - Far nodes: %llu nodes (%.4f%%)", m_octree->getStats().farPtrs, static_cast<float>(m_octree->getStats().farPtrs) / static_cast<float>(m_octree->getSize()) * 100.0f);
+    ImGui::Text("Materials: %u", m_octree->getStats().materials);
+    ImGui::Text("Textures: %u", static_cast<uint32_t>(m_octree->getMaterialTextures().size()));
     ImGui::Separator();
     ImGui::Text("Depth: %d", m_octree->getDepth());
     ImGui::Text("Density: %.4f%%", static_cast<float>(m_octree->getStats().voxels) / static_cast<float>(std::pow(8, m_octree->getDepth())) * 100.0f);
     ImGui::Separator();
-    ImGui::Text("GPU Memory usage: %s", VulkanMemoryAllocator::compactBytes(m_octreeBufferSize).c_str());
+    ImGui::Text("GPU Memory usage: %s", VulkanMemoryAllocator::compactBytes(m_octreeImagesMemUsage + m_octreeBufferSize).c_str());
+    ImGui::Text(" - GPU Memory usage (octree): %s", VulkanMemoryAllocator::compactBytes(m_octreeBufferSize).c_str());
+    ImGui::Text(" - GPU Memory usage (images): %s", VulkanMemoryAllocator::compactBytes(m_octreeImagesMemUsage).c_str());
     ImGui::Text("CPU Memory usage: %s", VulkanMemoryAllocator::compactBytes(m_octree->getByteSize()).c_str());
     ImGui::End();
 
     ImGui::Begin("Settings");
-    ImGui::SliderFloat("Scale", &m_octreeScale, 0.0f, 100.0f);
-    ImGui::SliderFloat3("Sun direction", &m_sunlightDir.x, -1.0f, 1.0f);
-    m_sunlightDir = glm::normalize(m_sunlightDir);
+    ImGui::InputFloat("Scale", &m_octreeScale, 0.1f, 1.0f);
+    ImGui::Separator();
+    ImGui::SliderFloat("Sun direction", &m_sunRotation, -180.0f, 180.0f);
+    const glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(m_sunRotation), {0.0f, 1.0f, 0.0f});
+    m_sunlightDir = glm::vec3(rotationMatrix * glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    ImGui::ColorEdit3("Sun color", &m_sunColor.x);
+    ImGui::ColorEdit3("Sky color", &m_skyColor.x);
+    ImGui::Separator();
+    ImGui::Checkbox("Intersection test", &m_intersectionTest);
+    if (m_intersectionTest)
+        ImGui::Checkbox("Enable color intersection", &m_intersectionTestColor);
     ImGui::End();
 }

@@ -1,15 +1,36 @@
 #version 450
 
+#extension GL_KHR_vulkan_glsl : enable
+
 layout ( push_constant ) uniform PushConstants {
 	vec4 camPos;
     mat4 invPVMatrix;
     float octreeScale;
     vec3 sunDirection;
+    vec3 skyColor;
+    vec3 sunColor;
 };
 
-layout(binding = 0) buffer MyBuffer {
+struct Material {
+   vec3 color;
+   float roughness;
+   float metallic;
+   float ior;
+   float transmission;
+   float emission;
+   uint albedoMap;
+   uint normalMap;
+};
+
+layout(set = 0, binding = 0) buffer OctreeData {
   uint octree[];
 };
+
+layout(set = 0, binding = 1) buffer MaterialData {
+  Material materials[];
+};
+
+layout(set = 0, binding = 2) uniform sampler2D tex[SAMPLER_ARRAY_SIZE];
 
 layout(location = 0) in vec2 fragScreenCoord;
 
@@ -49,6 +70,9 @@ struct Ray
     vec3 invDirection;
     float t;
     Collision coll;
+#ifdef INTERSECTION_TEST
+    float testTint;
+#endif
 };
 
 struct StackElem
@@ -188,6 +212,9 @@ void traceRay(inout Ray ray)
         }
         float size = pow(2.0, -(stackPtr + 1)) * octreeScale;
         vec3 pos = stack[stackPtr].pos + size * childPositions[current];
+#ifdef INTERSECTION_TEST
+        ray.testTint += 0.0025;
+#endif
         if (intersect(ray, pos, pos + vec3(size)))
         {
             BranchNode parent = parseBranch(octree[stack[stackPtr].index]);
@@ -220,18 +247,39 @@ void main() {
     ray.invDirection = 1.0 / ray.direction;
     ray.t = 0.0;
     ray.coll = Collision(false, parseLeaf(0, 0));
+#ifdef INTERSECTION_TEST
+    ray.testTint = 0.0;
+#endif
 
     traceRay(ray);
 
     if (ray.coll.hit)
     {
+#ifndef INTERSECTION_TEST
+        Material mat = materials[ray.coll.voxel.material];
+
         vec3 color = vec3(1.0, 1.0, 1.0);
-        vec3 diffuseFinal = color * clamp(dot(normalize(sunDirection.xyz), normalize(ray.coll.voxel.normal)) * 1.0, 0, 1);
+        if (mat.albedoMap < SAMPLER_ARRAY_SIZE) color *= texture(tex[mat.albedoMap], ray.coll.voxel.uv).rgb;
+        vec3 diffuseFinal = sunColor * color * clamp(dot(normalize(sunDirection.xyz), normalize(ray.coll.voxel.normal)) * 1.0, 0, 1);
         outColor = vec4(color * 0.05 + diffuseFinal, 1.0);
-        //outColor = vec4(ray.coll.voxel.normal * 0.5 + 0.5, 1.0);
+#else
+    #ifdef INTERSECTION_COLOR
+        outColor = vec4(ray.testTint, 1 - ray.testTint, 0.0, 1.0);
+    #else
+        outColor = vec4(vec3(ray.testTint), 1.0);
+    #endif
+#endif
     }
     else
     {
-        outColor = vec4(0.0, 0.0, 0.0, 1.0);
+#ifdef INTERSECTION_TEST
+    #ifdef INTERSECTION_COLOR
+        outColor = vec4(ray.testTint, 0.0, 0.0, 1.0);
+    #else
+        outColor = vec4(vec3(ray.testTint), 1.0);
+    #endif
+#else
+        outColor = vec4(skyColor, 1.0);
+#endif
     }
 }

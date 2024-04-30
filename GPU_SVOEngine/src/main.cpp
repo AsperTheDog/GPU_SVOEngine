@@ -5,6 +5,7 @@
 #include "Octree/octree_generation.hpp"
 
 #define LOAD true
+#define SAVE true
 constexpr uint8_t depth = 12;
 
 int main()
@@ -16,7 +17,7 @@ int main()
     Logger::setLevels(Logger::ALL);
 #endif
 
-	Engine engine{};
+    Logger::setRootContext("Octree init");
 #ifdef DEBUG_STRUCTURE
     Octree octree{depth, "assets/octree.bin"};
 #else
@@ -24,17 +25,23 @@ int main()
 #endif
     if constexpr (!LOAD)
     {
-        Voxelizer voxelizer{"assets/San_Miguel/san-miguel.obj", depth};
+        Voxelizer voxelizer{"assets/sponza/sponza.obj", depth};
 	    octree.generate(voxelizer.getModelAABB(), voxelize, &voxelizer);
+        octree.setMaterialPath(voxelizer.getMaterialFilePath());
+        for (const Material& mat : voxelizer.getMaterials())
+            octree.addMaterial(mat.toOctreeMaterial(), mat.albedoMap, mat.normalMap);
+        if constexpr (SAVE)
+            octree.dump("assets/octree.bin");
 	}
-
-#ifdef DEBUG_STRUCTURE
-    Logger::print(octree.toString(), Logger::LevelBits::INFO);
-#endif
-
-    if constexpr (LOAD) 
+    else
+    {
         octree.load();
+    }
+    octree.packAndFinish();
 
+	Engine engine{static_cast<uint32_t>(octree.getMaterialTextures().size())};
+
+    Logger::setRootContext("Engine context init");
 	engine.configureOctreeBuffer(octree, 7 * depth);
 	engine.run();
 #ifndef _DEBUG

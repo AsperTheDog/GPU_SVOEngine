@@ -31,11 +31,11 @@ struct Mesh
 {
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
-    uint32_t materialIndex;
 };
 
 struct Material
 {
+    std::string name;
     glm::vec3 color;
     float roughness;
     float metallic;
@@ -44,6 +44,8 @@ struct Material
     float emission;
     std::string albedoMap;
     std::string normalMap;
+
+    [[nodiscard]] MaterialProperties toOctreeMaterial() const;
 };
 
 struct Model
@@ -53,8 +55,6 @@ struct Model
 
     glm::vec3 min{FLT_MAX};
     glm::vec3 max{FLT_MIN};
-
-    uint32_t getMesh(uint32_t material);
 };
 
 struct Triangle
@@ -78,10 +78,10 @@ struct Triangle
 
 struct TriangleRootIndex
 {
-    uint16_t matIndex;
+    uint16_t meshIndex;
     uint32_t index;
 
-    [[nodiscard]] uint16_t getMaterial() const;
+    [[nodiscard]] uint16_t getMeshIndex() const;
     [[nodiscard]] uint32_t getIndex() const;
 };
 
@@ -116,6 +116,9 @@ public:
     bool doesAABBInteresect(const AABB& shape, bool isLeaf, uint8_t depth);
     void sampleVoxel(NodeRef& node) const;
     [[nodiscard]] AABB getModelAABB() const;
+    [[nodiscard]] const std::vector<Material>& getMaterials() const;
+
+    [[nodiscard]] std::string getMaterialFilePath() const;
 
 private:
     [[nodiscard]] std::array<glm::vec3, 3> getTrianglePos(TriangleIndex triangle) const;
@@ -126,12 +129,14 @@ private:
     [[nodiscard]] Triangle getTriangle(TriangleRootIndex rootIndex) const;
     [[nodiscard]] Material getMaterial(TriangleRootIndex rootIndex) const;
 
-    Model model;
+    Model m_model;
 
-    std::vector<TriangleRootIndex> triangles;
-    std::vector<std::vector<TriangleIndex>> triangleTree;
-    std::vector<TriangleLeafIndex> triangleLeafs;
+    std::vector<TriangleRootIndex> m_triangles;
+    std::vector<std::vector<TriangleIndex>> m_triangleTree;
+    std::vector<TriangleLeafIndex> m_triangleLeafs;
 
-    std::unordered_map<uint32_t, glm::u8vec3> colorMap;
+    std::unordered_map<uint32_t, glm::u8vec3> m_colorMap;
+
+    std::string m_baseDir;
 };
 

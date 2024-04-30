@@ -12,3 +12,6 @@
 [submodule "VkPlayground/repo"]
 	path = VkPlayground/repo
 	url = https://github.com/AsperTheDog/VkPlayground
+[submodule "GPU_SVOEngine/vendor/stb"]
+	path = GPU_SVOEngine/vendor/stb
+	url = https://github.com/nothings/stb

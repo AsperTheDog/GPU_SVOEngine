@@ -381,6 +381,16 @@ uint32_t Octree::getRaw(uint32_t index) const
 #endif
 }
 
+MaterialProperties& Octree::getMaterialProps(const uint32_t index)
+{
+    return m_materials[index];
+}
+
+const std::vector<std::string>& Octree::getMaterialTextures() const
+{
+    return m_materialTextures;
+}
+
 uint32_t Octree::getSize() const
 {
     return static_cast<uint32_t>(m_data.size());
@@ -428,6 +438,7 @@ void Octree::preallocate(const size_t size)
 
 void Octree::generate(const AABB root, const ProcessFunc func, void* processData)
 {
+    Logger::pushContext("Octree generation");
     m_data.clear();
     m_stats = OctreeStats{};
     m_loadedFromFile = false;
@@ -438,19 +449,12 @@ void Octree::generate(const AABB root, const ProcessFunc func, void* processData
     const std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
     m_stats.constructionTime = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) / 1000.f;
 
-    if (!m_dumpFile.empty())
-    {
-        dump(m_dumpFile);
-        const std::chrono::high_resolution_clock::time_point fileEnd = std::chrono::high_resolution_clock::now();
-        m_stats.saveTime = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(fileEnd - end).count()) / 1000.f;
-    }
-
     Logger::print("Octree stats:\n", Logger::INFO);
     Logger::print("  Nodes: " + std::to_string(getSize()), Logger::INFO);
     Logger::print("  Voxel nodes: " + std::to_string(m_stats.voxels), Logger::INFO);
     Logger::print("  Far pointers: " + std::to_string(m_stats.farPtrs), Logger::INFO);
     Logger::print("  Construction time: " + std::to_string(m_stats.constructionTime) + "s", Logger::INFO);
-    Logger::print("  Save time: " + std::to_string(m_stats.saveTime) + "s", Logger::INFO);
+    Logger::popContext();
 }
 
 NodeRef Octree::populateRec(const AABB nodeShape, const uint8_t currentDepth, void* processData)
@@ -553,14 +557,6 @@ NodeRef Octree::populateRec(const AABB nodeShape, const uint8_t currentDepth, vo
     return ref;
 }
 
-void Octree::pack()
-{
-    for (size_t i = m_farPtrs.size(); i != 0; i--)
-    {
-        addNode(FarNode(m_farPtrs[i - 1].destinationPos));
-    }
-}
-
 void Octree::addNode(const BranchNode child)
 {
 #ifdef DEBUG_STRUCTURE
@@ -652,23 +648,38 @@ void Octree::updateNode(uint32_t index, FarNode node)
 #endif
 }
 
-NearPtr Octree::pushFarPtr(const uint32_t sourcePos, const uint32_t destinationPos, const uint32_t farNodePos)
-{
-    m_farPtrs.push_back({ sourcePos, destinationPos, farNodePos });
-    return NearPtr(static_cast<uint16_t>(m_farPtrs.size() - 1), true);
-}
-
 void* Octree::getData()
 {
     return m_data.data();
 }
 
-void Octree::dump(const std::string_view filename) const
+void* Octree::getMaterialData()
 {
+    return m_materials.data();
+}
+
+void* Octree::getMaterialTexData()
+{
+    return m_materials.data();
+}
+
+void Octree::dump(const std::string_view filenameArg) const
+{
+    Logger::pushContext("Octree dumping");
+    const std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
+    const std::string filename = filenameArg.empty() ? m_dumpFile : filenameArg.data();
+    if (filename.empty())
+    {
+        Logger::print("No filename provided for octree dumping", Logger::ERR);
+        return;
+    }
     std::ofstream file(filename.data(), std::ios::binary);
     const size_t size = getSize();
-    file.write(reinterpret_cast<const char*>(&size), sizeof(size_t));
-    file.write(reinterpret_cast<const char*>(&m_stats), sizeof(OctreeStats));
+    file.write(reinterpret_cast<const char*>(&size), sizeof(size));
+    file.write(reinterpret_cast<const char*>(&m_stats.voxels), sizeof(m_stats.voxels));
+    file.write(reinterpret_cast<const char*>(&m_stats.farPtrs), sizeof(m_stats.farPtrs));
+    file.write(reinterpret_cast<const char*>(&m_stats.materials), sizeof(m_stats.materials));
+    file.write(reinterpret_cast<const char*>(&m_stats.constructionTime), sizeof(m_stats.constructionTime));
     if (!m_reversed)
         file.write(reinterpret_cast<const char*>(m_data.data()), getByteSize());
     else
@@ -680,14 +691,29 @@ void Octree::dump(const std::string_view filename) const
 #else
             const uint32_t raw = m_data[getSize() - i];
 #endif
-            file.write(reinterpret_cast<const char*>(&raw), sizeof(uint32_t));
+            file.write(reinterpret_cast<const char*>(&raw), sizeof(raw));
         }
     }
+    const size_t matSize = getMaterialSize();
+    file.write(reinterpret_cast<const char*>(&matSize), sizeof(matSize));
+    file.write(reinterpret_cast<const char*>(m_materials.data()), getMaterialByteSize());
+    const size_t texSize = m_materialTextures.size();
+    file.write(reinterpret_cast<const char*>(&texSize), sizeof(texSize));
+    for (const std::string& texture : m_materialTextures)
+    {
+        const uint32_t texSize = static_cast<uint32_t>(texture.size());
+        file.write(reinterpret_cast<const char*>(&texSize), sizeof(texSize));
+        file.write(texture.data(), texSize);
+    }
     file.close();
+    const std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
+    m_stats.saveTime = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) / 1000.f;
+    Logger::popContext();
 }
 
 void Octree::load(const std::string_view filename)
 {
+    Logger::pushContext("Octree loading");
     m_data.clear();
     m_stats = OctreeStats{};
     const std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
@@ -704,20 +730,80 @@ void Octree::load(const std::string_view filename)
     std::ifstream file(filename.data(), std::ios::binary);
     size_t size;
     file.read(reinterpret_cast<char*>(&size), sizeof(size));
-    file.read(reinterpret_cast<char*>(&m_stats), sizeof(OctreeStats));
+    file.read(reinterpret_cast<char*>(&m_stats.voxels), sizeof(m_stats.voxels));
+    file.read(reinterpret_cast<char*>(&m_stats.farPtrs), sizeof(m_stats.farPtrs));
+    file.read(reinterpret_cast<char*>(&m_stats.materials), sizeof(m_stats.materials));
+    file.read(reinterpret_cast<char*>(&m_stats.constructionTime), sizeof(m_stats.constructionTime));
     m_data.resize(size);
     file.read(reinterpret_cast<char*>(m_data.data()), getByteSize());
+    size_t matSize;
+    file.read(reinterpret_cast<char*>(&matSize), sizeof(matSize));
+    m_materials.resize(matSize);
+    file.read(reinterpret_cast<char*>(m_materials.data()), getMaterialByteSize());
+    size_t texSize;
+    file.read(reinterpret_cast<char*>(&texSize), sizeof(texSize));
+    m_materialTextures.resize(texSize);
+    for (uint32_t i = 0; i < texSize; i++)
+    {
+        uint32_t pathSize;
+        file.read(reinterpret_cast<char*>(&pathSize), sizeof(pathSize));
+        m_materialTextures[i].resize(pathSize);
+        file.read(m_materialTextures[i].data(), pathSize);
+    }
     file.close();
     const std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
     m_stats.saveTime = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) / 1000.f;
     m_loadedFromFile = true;
+    Logger::popContext();
+}
+
+void Octree::setMaterialPath(const std::string_view path)
+{
+    m_textureRootDir = path;
+    if (path.back() != '/') m_textureRootDir += '/';
+}
+
+void Octree::addMaterial(MaterialProperties material, const std::string_view albedoMap, const std::string_view normalMap)
+{
+    std::string albedoPath = m_textureRootDir + albedoMap.data();
+    std::string normalPath = m_textureRootDir + normalMap.data();
+    for (uint32_t i = 0; i < m_materialTextures.size(); i++)
+    {
+        if (m_materialTextures[i] == albedoPath)
+            material.albedoMap = i;
+        else if (m_materialTextures[i] == normalPath)
+            material.normalMap = i;
+    }
+    if (material.albedoMap == 500 && !albedoMap.empty())
+    {
+        m_materialTextures.emplace_back(albedoPath.data());
+        material.albedoMap = static_cast<uint16_t>(m_materialTextures.size() - 1);
+    }
+    if (material.normalMap == 500 && !normalMap.empty())
+    {
+        m_materialTextures.emplace_back(normalPath.data());
+        material.normalMap = static_cast<uint16_t>(m_materialTextures.size() - 1);
+    }
+    m_materials.push_back(material);
+}
+
+void Octree::packAndFinish()
+{
+    if (m_materials.empty())
+        m_materials.push_back(MaterialProperties{});
+    m_finished = true;
+    m_stats.materials = static_cast<uint16_t>(m_materials.size());
 }
 
 void Octree::clear()
 {
     m_data.clear();
-    m_farPtrs.clear();
     m_depth = 0;
+}
+
+bool Octree::isFinished() const
+{
+    return m_finished;
 }
 
 void Octree::populate(const AABB nodeShape, void* processData)

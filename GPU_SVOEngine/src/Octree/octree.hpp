@@ -137,28 +137,16 @@ struct FarNode
     [[nodiscard]] uint32_t toRaw() const;
 };
 
-struct MaterialTextures
-{
-    uint32_t albedoMap: 15;
-    uint32_t albedoFlag: 1;
-    uint32_t normalMap: 15;
-    uint32_t normalFlag: 1;
-};
-
 struct MaterialProperties
 {
-    glm::vec3 color;
-    float roughness;
-    float metallic;
-    float ior;
-    float transmission;
-    float emission;
-};
-
-struct OctreeMaterial
-{
-    MaterialProperties properties;
-    MaterialTextures textures;
+    alignas(16) glm::vec3 color{1.0f, 1.0f, 1.0f};
+    alignas(4) float roughness = 1.0f;
+    alignas(4) float metallic = 0.0f;
+    alignas(4) float ior = 0.0f;
+    alignas(4) float transmission = 0.0f;
+    alignas(4) float emission = 0.0f;
+    alignas(4) uint32_t albedoMap = 500;
+    alignas(4) uint32_t normalMap = 500;
 };
 
 #ifdef DEBUG_STRUCTURE
@@ -221,6 +209,7 @@ struct OctreeStats
 {
     uint64_t voxels = 0;
     uint64_t farPtrs = 0;
+    uint16_t materials = 0;
     float constructionTime = 0;
     float saveTime = 0;
 };
@@ -234,6 +223,8 @@ public:
     Octree (uint8_t maxDepth, std::string_view outputFile);
 
     [[nodiscard]] uint32_t getRaw(uint32_t index) const;
+    [[nodiscard]] MaterialProperties& getMaterialProps(uint32_t index);
+    [[nodiscard]] const std::vector<std::string>& getMaterialTextures() const;
 
     [[nodiscard]] uint32_t getSize() const;
     [[nodiscard]] uint32_t getByteSize() const;
@@ -243,6 +234,7 @@ public:
     [[nodiscard]] bool isReversed() const;
     [[nodiscard]] OctreeStats getStats() const;
     [[nodiscard]] bool isOctreeLoadedFromFile() const;
+    [[nodiscard]] bool isFinished() const;
 
     void preallocate(size_t size);
     void generate(AABB root, ProcessFunc func, void* processData);
@@ -255,12 +247,16 @@ public:
     void updateNode(uint32_t index, LeafNode1 node);
     void updateNode(uint32_t index, LeafNode2 node);
     void updateNode(uint32_t index, FarNode node);
-    void pack();
-    NearPtr pushFarPtr(uint32_t sourcePos, uint32_t destinationPos, uint32_t farNodePos);
+    void dump(std::string_view filename) const;
 
     void* getData();
-    void dump(std::string_view filename) const;
+    void* getMaterialData();
+    void* getMaterialTexData();
     void load(std::string_view filename = "");
+
+    void setMaterialPath(std::string_view path);
+    void addMaterial(MaterialProperties material, const std::string_view albedoMap, const std::string_view normalMap);
+    void packAndFinish();
 
     void clear();
 
@@ -281,17 +277,20 @@ private:
     std::vector<uint32_t> m_data;
     uint32_t& get(uint32_t index);
 #endif
-    std::vector<FarNodeRef> m_farPtrs;
 
-    std::vector<OctreeMaterial> m_materials;
+    std::vector<MaterialProperties> m_materials;
+    std::vector<std::string> m_materialTextures;
+    std::string m_textureRootDir;
 
     size_t m_sizePtr = 0;
     uint8_t m_depth = 0;
     ProcessFunc m_process = nullptr;
     std::string m_dumpFile;
+
     bool m_reversed = false;
     bool m_loadedFromFile = false;
+    bool m_finished = false;
 
-    OctreeStats m_stats{};
+    mutable OctreeStats m_stats{};
 };
 

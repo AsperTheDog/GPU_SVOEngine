@@ -9,14 +9,15 @@
 uint8_t depth = 11;
 std::string loadPath = "assets/octree.bin";
 std::string savePath = "assets/octree.bin";
-std::string modelPath = "assets/sponza/sponza.obj";
-bool saveFlag = false;
+std::string modelPath = "assets/test_ico.obj";
 #ifdef EXIT_ON_NO_ARGS
 bool loadFlag = false;
 bool voxelizeFlag = false;
+bool saveFlag = false;
 #else
-bool loadFlag = true;
-bool voxelizeFlag = false;
+bool loadFlag = false;
+bool voxelizeFlag = true;
+bool saveFlag = false;
 #endif
 
 void printHelpAndExit()

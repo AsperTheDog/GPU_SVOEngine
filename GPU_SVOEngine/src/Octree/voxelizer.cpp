@@ -64,6 +64,7 @@ Voxelizer::Voxelizer(std::string filename, uint8_t maxDepth)
             throw std::runtime_error(warn + err);
         }
 
+        m_model.materials.emplace_back();
         for (tinyobj::material_t& material : materials)
         {
             Material mat{};
@@ -88,9 +89,9 @@ Voxelizer::Voxelizer(std::string filename, uint8_t maxDepth)
         {
             for (uint32_t i = 0; i < shape.mesh.indices.size(); i++)
             {
-                if (shape.mesh.material_ids[i / 3] != materialIndex)
+                if (shape.mesh.material_ids[i / 3] + 1 != materialIndex)
                 {
-                    materialIndex = shape.mesh.material_ids[i / 3];
+                    materialIndex = shape.mesh.material_ids[i / 3] + 1;
                     mesh = &m_model.meshes[materialIndex];
                     uniqueVertices.clear();
                 }

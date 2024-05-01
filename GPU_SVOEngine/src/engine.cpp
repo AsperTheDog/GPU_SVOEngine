@@ -5,18 +5,19 @@
 
 #include <imgui.h>
 #include <ranges>
-#include <glm/mat4x4.hpp>
-#include <glm/vec3.hpp>
+
+#include <glm/gtx/quaternion.hpp>
 
 #include "imgui_internal.h"
-#include "utils/logger.hpp"
 #include "backends/imgui_impl_vulkan.h"
-#include "Octree/octree.hpp"
+
+#include "utils/logger.hpp"
+
 #include "vulkan_context.hpp"
+#include "Octree/octree.hpp"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
-#include <glm/gtx/quaternion.hpp>
 
 struct PushConstantData
 {
@@ -47,7 +48,7 @@ VulkanGPU chooseCorrectGPU()
     throw std::runtime_error("No discrete GPU found");
 }
 
-Engine::Engine(const uint32_t samplerImageCount) : cam({ 0, 0, 0 }, { 0, 0, 0 }), m_window("Vulkan", 1920, 1080)
+Engine::Engine(uint32_t samplerImageCount) : cam({ 0, 0, 0 }, { 0, 0, 0 }), m_window("Vulkan", 1920, 1080)
 {
     Logger::setRootContext("Engine init");
 #ifndef _DEBUG
@@ -83,6 +84,7 @@ Engine::Engine(const uint32_t samplerImageCount) : cam({ 0, 0, 0 }, { 0, 0, 0 })
     m_graphicsCmdBufferID = device.createCommandBuffer(graphicsQueueFamily, 0, false);
 
     createRenderPass();
+    samplerImageCount = std::max(samplerImageCount, 1U);
     m_pipelineID = createGraphicsPipeline(samplerImageCount, "shaders/raytracing.frag", {{"SAMPLER_ARRAY_SIZE", std::to_string(samplerImageCount)}});
     m_intersectPipelineID = createGraphicsPipeline(samplerImageCount, "shaders/raytracing.frag", {{"SAMPLER_ARRAY_SIZE", std::to_string(samplerImageCount)}, {"INTERSECTION_TEST", "true"}});
     m_intersectColorPipelineID = createGraphicsPipeline(samplerImageCount, "shaders/raytracing.frag", {{"SAMPLER_ARRAY_SIZE", std::to_string(samplerImageCount)}, {"INTERSECTION_TEST", "true"}, {"INTERSECTION_COLOR", "true"}});

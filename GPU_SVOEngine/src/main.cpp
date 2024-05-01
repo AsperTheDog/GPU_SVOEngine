@@ -55,7 +55,7 @@ void parseCommands(const int argc, char* argv[])
             }
             catch (const std::exception& e)
             {
-                Logger::print("Invalid depth value, using default value of 11", Logger::LevelBits::WARN);
+                Logger::print("Invalid depth value, using default value of " + std::to_string(depth), Logger::LevelBits::WARN);
             }
             depthProvided = true;
         }
@@ -97,7 +97,7 @@ void parseCommands(const int argc, char* argv[])
     }
     if (!depthProvided && voxelizeFlag)
     {
-        Logger::print("No depth provided, using default value of" + std::to_string(depth), Logger::LevelBits::WARN);
+        Logger::print("No depth provided, using default value of " + std::to_string(depth), Logger::LevelBits::WARN);
     }
     if (voxelizeFlag && !saveFlag)
     {

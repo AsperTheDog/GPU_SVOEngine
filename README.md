@@ -1,7 +1,7 @@
 # GPU_SVOEngine
 ![image](https://github.com/AsperTheDog/GPU_SVOEngine/assets/45227294/b895e571-a170-43f3-8fa7-4a6416be0d2f)
 
-A reimplementation and improvement of the [SVOEngine](https://github.com/AsperTheDog/SVOEngine) voxel engine using the GPU via Vulkan.
+A reimplementation and improvement of the [Sparse Voxel Octree Engine](https://github.com/AsperTheDog/SVOEngine) I made long ago, but this time using the GPU via Vulkan.
 
 ## How to use
 The release exe only requires the user to have a Vulkan compatible GPU and the latest version of [vcredist](https://aka.ms/vs/17/release/vc_redist.x64.exe) installed. GPU requirements depend on the complexity of the SVO being loaded.

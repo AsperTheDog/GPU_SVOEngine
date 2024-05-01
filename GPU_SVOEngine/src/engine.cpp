@@ -21,11 +21,16 @@
 struct PushConstantData
 {
     alignas(16) glm::vec4 camPos;
+    alignas(16) glm::vec3 camDir;
     alignas(16) glm::mat4 viewProj;
-    alignas(4) float scale;
     alignas(16) glm::vec3 sunDirection;
     alignas(16) glm::vec3 skyColor;
     alignas(16) glm::vec3 sunColor;
+    alignas(4) float scale;
+    alignas(4) float brightness;
+    alignas(4) float saturation;
+    alignas(4) float contrast;
+    alignas(4) float gamma;
 };
 
 VulkanGPU chooseCorrectGPU()
@@ -519,7 +524,19 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
     const uint32_t layout = VulkanContext::getDevice(m_deviceID).getPipeline(m_pipelineID).getLayout();
 
     const Camera::Data camData = cam.getData();
-    const PushConstantData pushConstants{camData.position, camData.invPVMatrix, m_octreeScale, m_sunlightDir, m_skyColor, m_sunColor};
+    const PushConstantData pushConstants{
+        camData.position,
+        cam.getDir(),
+        camData.invPVMatrix,
+        m_sunlightDir,
+        m_skyColor,
+        m_sunColor,
+        m_octreeScale,
+        m_brightness,
+        m_saturation,
+        m_contrast,
+        m_gamma
+    };
 
     VulkanCommandBuffer& graphicsBuffer = VulkanContext::getDevice(m_deviceID).getCommandBuffer(m_graphicsCmdBufferID, 0);
     graphicsBuffer.reset();
@@ -593,6 +610,11 @@ void Engine::drawImgui()
     m_sunlightDir = glm::vec3(rotationMatrix * glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
     ImGui::ColorEdit3("Sun color", &m_sunColor.x);
     ImGui::ColorEdit3("Sky color", &m_skyColor.x);
+    ImGui::Separator();
+    ImGui::DragFloat("Brightness", &m_brightness, 0.001f, -1, 1);
+	ImGui::DragFloat("Saturation", &m_saturation, 0.001f, -10, 10);
+	ImGui::DragFloat("Contrast", &m_contrast, 0.001f, 0, 1);
+	ImGui::DragFloat("Gamma", &m_gamma, 0.001f, 0, 4);
     ImGui::Separator();
     ImGui::Checkbox("Intersection test", &m_intersectionTest);
     if (m_intersectionTest)

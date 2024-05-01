@@ -69,5 +69,10 @@ private:
 
     bool m_intersectionTest = false;
     bool m_intersectionTestColor = false;
+
+    float m_brightness = 0.0f;
+    float m_saturation = 1.0f;
+    float m_contrast = 1.0f;
+    float m_gamma = 1.0f;
 };
 

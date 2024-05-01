@@ -2,13 +2,24 @@
 
 #extension GL_KHR_vulkan_glsl : enable
 
+#define PI 3.14159265359
+
 layout ( push_constant ) uniform PushConstants {
 	vec4 camPos;
+    vec3 camDir;
     mat4 invPVMatrix;
-    float octreeScale;
+
     vec3 sunDirection;
+
     vec3 skyColor;
     vec3 sunColor;
+
+    float octreeScale;
+
+    float brightness;
+    float saturation;
+    float contrast;
+    float gamma;
 };
 
 struct Material {
@@ -36,6 +47,10 @@ layout(location = 0) in vec2 fragScreenCoord;
 
 layout(location = 0) out vec4 outColor;
 
+//*********************
+//  OCTREE TRAVERSAL
+//*********************
+
 struct BranchNode 
 {
     uint address;
@@ -61,6 +76,7 @@ struct Collision
 {
     bool hit;
     LeafNode voxel;
+    vec3 voxelPos;
 };
 
 struct Ray
@@ -192,12 +208,13 @@ uint getMemoryPosOfChild(BranchNode node, uint child)
 
 void traceRay(inout Ray ray)
 {
+    float halfScale = octreeScale / 2.0;
     StackElem[20] stack;
-    stack[0] = StackElem(0, vec3(0), 0);
+    stack[0] = StackElem(0, vec3(-halfScale), 0);
     int stackPtr = 0;
 
     uint octant = getOctact(ray);
-    if (!intersect(ray, vec3(0), vec3(octreeScale))) return;
+    if (!intersect(ray, vec3(-halfScale), vec3(halfScale))) return;
 
     while (true)
     {
@@ -223,7 +240,7 @@ void traceRay(inout Ray ray)
             uint nextAddress = trueAddress + getMemoryPosOfChild(parent, current);
             if ((parent.leafMask & (1 << current)) != 0)
             {
-                ray.coll = Collision(true, parseLeaf(octree[nextAddress], octree[nextAddress + 1]));
+                ray.coll = Collision(true, parseLeaf(octree[nextAddress], octree[nextAddress + 1]), pos + vec3(size) / 2.0);
                 break;
             }
             else
@@ -240,13 +257,61 @@ void traceRay(inout Ray ray)
     }
 }
 
+//*********************
+//     LIGHTING
+//*********************
+
+vec3 colorCorrection(vec3 color)
+{
+    color = contrast * (color - 0.5f) + 0.5f + brightness;
+	color = clamp(color, vec3(0.0), vec3(1.0));
+
+	vec3 desat = vec3(dot(color, vec3(0.299, 0.587, 0.114))); // Luminance
+	color = mix(desat, color, saturation);
+
+	color = clamp(color, vec3(0.0), vec3(1.0));
+
+	color = pow(color.rgb, vec3(gamma));
+	color = clamp(color, vec3(0.0), vec3(1.0));
+
+	return color;
+}
+
+vec3 calculateLighting(Material mat, vec2 uv, vec3 normal, vec3 position)
+{
+    vec3 norm_sunDirection = normalize(sunDirection);
+    vec3 norm_normal = normalize(normal);
+    vec3 norm_camDir = normalize(camDir);
+	vec3 reflectDir = reflect(-norm_sunDirection, norm_normal);
+
+    vec3 color = vec3(1.0, 1.0, 1.0);
+    if (mat.albedoMap < SAMPLER_ARRAY_SIZE) 
+        color *= texture(tex[mat.albedoMap], uv).rgb;
+
+    vec3 amb = color * 0.05;
+    float diff = clamp(dot(norm_normal, norm_sunDirection), 0.0, 1.0);
+    vec3 halfV = normalize(norm_sunDirection + norm_camDir);
+    float shininess = clamp(sqrt(2.0 / (mat.roughness + 2)), 0.0, 1.0);
+    float spec = pow(max(dot(norm_normal, halfV), 0.0), shininess * 4);
+
+    vec3 ambient = sunColor * amb * color;
+    vec3 diffuse = sunColor * diff * color;
+    vec3 specular = sunColor * spec * color;
+
+    return (amb + diffuse + specular);
+}
+
+//*********************
+//        MAIN
+//*********************
+
 void main() {
     Ray ray;
     ray.origin = camPos.xyz;
     ray.direction = normalize(homogenize(invPVMatrix * vec4(fragScreenCoord, 1.0, 1.0)) - ray.origin);
     ray.invDirection = 1.0 / ray.direction;
     ray.t = 0.0;
-    ray.coll = Collision(false, parseLeaf(0, 0));
+    ray.coll = Collision(false, parseLeaf(0, 0), vec3(0, 0, 0));
 #ifdef INTERSECTION_TEST
     ray.testTint = 0.0;
 #endif
@@ -256,12 +321,8 @@ void main() {
     if (ray.coll.hit)
     {
 #ifndef INTERSECTION_TEST
-        Material mat = materials[ray.coll.voxel.material];
-
-        vec3 color = vec3(1.0, 1.0, 1.0);
-        if (mat.albedoMap < SAMPLER_ARRAY_SIZE) color *= texture(tex[mat.albedoMap], ray.coll.voxel.uv).rgb;
-        vec3 diffuseFinal = sunColor * color * clamp(dot(normalize(sunDirection.xyz), normalize(ray.coll.voxel.normal)) * 1.0, 0, 1);
-        outColor = vec4(color * 0.05 + diffuseFinal, 1.0);
+        vec3 shaded = calculateLighting(materials[ray.coll.voxel.material], ray.coll.voxel.uv, ray.coll.voxel.normal, ray.coll.voxelPos);
+        outColor = vec4(colorCorrection(shaded), 1.0);
 #else
     #ifdef INTERSECTION_COLOR
         outColor = vec4(ray.testTint, 1 - ray.testTint, 0.0, 1.0);

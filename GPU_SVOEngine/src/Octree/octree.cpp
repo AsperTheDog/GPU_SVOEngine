@@ -336,6 +336,7 @@ void Octree::dump(const std::string_view filenameArg) const
     std::ofstream file(filename.data(), std::ios::binary);
     const size_t size = getSize();
     file.write(reinterpret_cast<const char*>(&size), sizeof(size));
+    file.write(reinterpret_cast<const char*>(&m_depth), sizeof(m_depth));
     file.write(reinterpret_cast<const char*>(&m_stats.voxels), sizeof(m_stats.voxels));
     file.write(reinterpret_cast<const char*>(&m_stats.farPtrs), sizeof(m_stats.farPtrs));
     file.write(reinterpret_cast<const char*>(&m_stats.materials), sizeof(m_stats.materials));
@@ -390,6 +391,7 @@ void Octree::load(const std::string_view filename)
     std::ifstream file(filename.data(), std::ios::binary);
     size_t size;
     file.read(reinterpret_cast<char*>(&size), sizeof(size));
+    file.read(reinterpret_cast<char*>(&m_depth), sizeof(m_depth));
     file.read(reinterpret_cast<char*>(&m_stats.voxels), sizeof(m_stats.voxels));
     file.read(reinterpret_cast<char*>(&m_stats.farPtrs), sizeof(m_stats.farPtrs));
     file.read(reinterpret_cast<char*>(&m_stats.materials), sizeof(m_stats.materials));

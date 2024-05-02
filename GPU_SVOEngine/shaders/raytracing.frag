@@ -244,12 +244,13 @@ vec3 calculateLighting(Collision coll)
         diffAmbTexel = texture(tex[mat.diffuseMap], voxel.uv).rgb;
     vec3 ambientColor = mat.ambient * diffAmbTexel;
     
-    float amb = 0.05;
+    float amb = 0.1;
     vec3 ambient = sunColor * amb * ambientColor;
 
+#ifdef NO_SHADOW
     Ray shadowRay;
     vec3 shadowDir = normalize(sunDirection);
-    shadowRay.origin = coll.voxelPos + shadowDir * VOXEL_HALF_DIAGONAL * octreeScale;
+    shadowRay.origin = coll.voxelPos + VOXEL_SIZE * octreeScale * voxel.normal;
     shadowRay.invDirection = 1.0 / shadowDir;
     uint octant = 0;
     if (shadowDir.x < 0) octant |= 4;
@@ -259,6 +260,7 @@ vec3 calculateLighting(Collision coll)
     {
         return ambient;
     }
+#endif
 
     vec3 norm_sunDirection = normalize(sunDirection);
     vec3 norm_camDir = normalize(camPos - coll.voxelPos);
@@ -271,7 +273,7 @@ vec3 calculateLighting(Collision coll)
     vec3 specularColor = mat.specular * specularTexel;
 
     float diff = clamp(dot(voxel.normal, norm_sunDirection), 0.0, 1.0);
-    float spec = pow(max(dot(voxel.normal, halfV), 0.0), mat.specularComp);
+    float spec = pow(max(dot(voxel.normal, halfV), 0.0), mat.specularComp * 3);
 
     vec3 diffuse = sunColor * diff * diffuseColor;
     vec3 specular = sunColor * spec * specularColor;

@@ -83,14 +83,11 @@ Engine::Engine(const uint32_t samplerImageCount, const uint8_t depth) : cam({ 0,
     m_graphicsCmdBufferID = device.createCommandBuffer(graphicsQueueFamily, 0, false);
 
     m_depth = depth;
-    const float voxelSize = 1 / static_cast<float>(1 << m_depth);
-    m_voxelHalfDiagonal = std::sqrt(2.0f) * voxelSize / 2.0f + voxelSize / 10;
+    m_voxelSize = std::sqrt(2.0f) * (1.0f / static_cast<float>(1 << m_depth)) / 2.0f;
+    m_samplerImageCount = samplerImageCount;
 
     createRenderPass();
-    m_samplerImageCount = std::max(samplerImageCount, 1U);
-    m_pipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"VOXEL_HALF_DIAGONAL", std::to_string(m_voxelHalfDiagonal)}});
-    m_intersectPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}, {"VOXEL_HALF_DIAGONAL", std::to_string(m_voxelHalfDiagonal)}});
-    m_intersectColorPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}, {"INTERSECTION_COLOR", "true"}, {"VOXEL_HALF_DIAGONAL", std::to_string(m_voxelHalfDiagonal)}});
+    Engine::updatePipelines();
 
     m_framebuffers.resize(swapchain.getImageCount());
     for (uint32_t i = 0; i < swapchain.getImageCount(); i++)
@@ -161,7 +158,7 @@ void Engine::configureOctreeBuffer(Octree& octree, const float scale)
                 const VkExtent3D extent = { static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight), 1 };
 
                 if (!pixels) {
-                    throw std::runtime_error("failed to load texture image!");
+                    throw std::runtime_error("failed to load texture image " + imagePath); 
                 }
                 
                 {
@@ -556,6 +553,8 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
             graphicsBuffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, m_intersectColorPipelineID);
         else
             graphicsBuffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, m_intersectPipelineID);
+    else if (m_noShadows)
+        graphicsBuffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, m_noShadowPipelineID);
     else
         graphicsBuffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineID);
     graphicsBuffer.cmdSetViewport(viewport);
@@ -571,9 +570,6 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
 
     Logger::popContext();
 }
-
-
-glm::vec3 sunDir = glm::normalize(glm::vec3{0.1, 1.0, 0.1});
 
 void Engine::drawImgui()
 {
@@ -613,9 +609,13 @@ void Engine::drawImgui()
     ImGui::Begin("Settings");
     ImGui::InputFloat("Scale", &m_octreeScale, 0.1f, 1.0f);
     ImGui::Separator();
-    ImGui::SliderFloat("Sun direction", &m_sunRotation, -180.0f, 180.0f);
-    const glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(m_sunRotation), {0.0f, 1.0f, 0.0f});
-    m_sunlightDir = glm::vec3(rotationMatrix * glm::vec4(sunDir.x,sunDir.y, sunDir.z, 1.0f));
+    ImGui::SliderFloat("Sun Latitude", &m_sunRotationLat, -180.0f, 180.0f);
+    ImGui::SliderFloat("Sun Altitude", &m_sunRotationAlt, -180.0f, 180.0f);
+    const float latRads = glm::radians(m_sunRotationLat);
+    const float altRads = glm::radians(m_sunRotationAlt + 90);
+    m_sunlightDir.x = glm::cos(altRads) * glm::cos(latRads);
+    m_sunlightDir.y = glm::sin(altRads);
+    m_sunlightDir.z = glm::cos(altRads) * glm::sin(latRads);
     ImGui::ColorEdit3("Sun color", &m_sunColor.x);
     ImGui::ColorEdit3("Sky color", &m_skyColor.x);
     ImGui::Separator();
@@ -625,28 +625,37 @@ void Engine::drawImgui()
 	ImGui::DragFloat("Gamma", &m_gamma, 0.001f, 0, 4);
     ImGui::Separator();
     if (ImGui::Button("Reload shaders"))
-        updateShader();
+        updatePipelines();
+    if (!m_intersectionTest)
+        ImGui::Checkbox("No shadows", &m_noShadows);
     ImGui::Checkbox("Intersection test", &m_intersectionTest);
     if (m_intersectionTest)
         ImGui::Checkbox("Enable color intersection", &m_intersectionTestColor);
     ImGui::End();
 }
 
-void Engine::updateShader()
+void Engine::updatePipelines()
 {
     VulkanDevice& device = VulkanContext::getDevice(m_deviceID);
 
     try
     {
-        const uint32_t oldPipeline = m_pipelineID;
-        m_pipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"VOXEL_HALF_DIAGONAL", std::to_string(m_voxelHalfDiagonal)}});
-        device.freePipeline(oldPipeline);
-        const uint32_t oldIntersectPipeline = m_intersectPipelineID;
-        m_intersectPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}, {"VOXEL_HALF_DIAGONAL", std::to_string(m_voxelHalfDiagonal)}});
-        device.freePipeline(oldIntersectPipeline);
-        const uint32_t oldIntersectColorPipeline = m_intersectColorPipelineID;
-        m_intersectColorPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}, {"INTERSECTION_COLOR", "true"}, {"VOXEL_HALF_DIAGONAL", std::to_string(m_voxelHalfDiagonal)}});
-        device.freePipeline(oldIntersectColorPipeline);
+        uint32_t oldPipeline = m_pipelineID;
+        m_pipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"VOXEL_SIZE", std::to_string(m_voxelSize)}});
+        if (oldPipeline != UINT32_MAX)
+            device.freePipeline(oldPipeline);
+        oldPipeline = m_noShadowPipelineID;
+        m_noShadowPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"NO_SHADOW", "true"}, {"VOXEL_SIZE", std::to_string(m_voxelSize)}});
+        if (oldPipeline != UINT32_MAX)
+            device.freePipeline(oldPipeline);
+        oldPipeline = m_intersectPipelineID;
+        m_intersectPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}, {"VOXEL_SIZE", std::to_string(m_voxelSize)}});
+        if (oldPipeline != UINT32_MAX)
+            device.freePipeline(oldPipeline);
+        oldPipeline = m_intersectColorPipelineID;
+        m_intersectColorPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}, {"INTERSECTION_COLOR", "true"}, {"VOXEL_SIZE", std::to_string(m_voxelSize)}});
+        if (oldPipeline != UINT32_MAX)
+            device.freePipeline(oldPipeline);
     }
     catch (const std::exception& e)
     {

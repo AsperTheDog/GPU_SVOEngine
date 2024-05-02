@@ -29,7 +29,7 @@ private:
 
 	void drawImgui();
 
-    void updateShader();
+    void updatePipelines();
 
 	Camera cam;
 
@@ -45,6 +45,7 @@ private:
 	uint32_t m_graphicsCmdBufferID = UINT32_MAX;
 	uint32_t m_renderPassID = UINT32_MAX;
 	uint32_t m_pipelineID = UINT32_MAX;
+	uint32_t m_noShadowPipelineID = UINT32_MAX;
 	uint32_t m_intersectPipelineID = UINT32_MAX;
 	uint32_t m_intersectColorPipelineID = UINT32_MAX;
     uint32_t m_pipelineLayoutID = UINT32_MAX;
@@ -59,7 +60,8 @@ private:
     VkDeviceSize m_octreeBufferSize = 0;
     VkDeviceSize m_octreeMatPadding = 0;
     float m_octreeScale = 1.0f;
-    float m_sunRotation = 0.0f;
+    float m_sunRotationLat = 0.0f;
+    float m_sunRotationAlt = 0.0f;
     glm::vec3 m_sunlightDir{1.0f, 1.0f, 0.0f};
     glm::vec3 m_skyColor{0.0, 1.0, 1.0};
     glm::vec3 m_sunColor{1.0, 1.0, 1.0};
@@ -67,11 +69,12 @@ private:
 
     uint32_t m_samplerImageCount = 0;
     VkDeviceSize m_octreeImagesMemUsage = 0;
-    float m_voxelHalfDiagonal = 0.0;
+    float m_voxelSize = 1.0f;
     uint8_t m_depth = 0;
 
     Octree* m_octree = nullptr;
 
+    bool m_noShadows = true;
     bool m_intersectionTest = false;
     bool m_intersectionTestColor = false;
 

@@ -2,15 +2,16 @@
 
 #include <stdexcept>
 
-#define TINYOBJLOADER_IMPLEMENTATION
 #include <array>
 #include <unordered_set>
 #include <glm/gtx/string_cast.hpp>
 #include <glm/gtx/intersect.hpp>
 #include <glm/gtx/norm.hpp>
 
-#include "tiny_obj_loader.h"
 #include "utils/logger.hpp"
+
+#define TINYOBJLOADER_IMPLEMENTATION
+#include "tiny_obj_loader.h"
 
 
 glm::vec2 Triangle::getWeightedUV(const glm::vec3 weights) const
@@ -21,27 +22,6 @@ glm::vec2 Triangle::getWeightedUV(const glm::vec3 weights) const
 glm::vec3 Triangle::getWeightedNormal(const glm::vec3 weights) const
 {
     return v0.normal * weights.x + v1.normal * weights.y + v2.normal * weights.z;
-}
-
-uint16_t TriangleRootIndex::getMeshIndex() const
-{
-
-    return meshIndex;
-}
-
-uint32_t TriangleRootIndex::getIndex() const
-{
-    return index;
-}
-
-uint32_t TriangleIndex::getIndex() const
-{
-    return index;
-}
-
-bool TriangleIndex::isConfined() const
-{
-    return confined;
 }
 
 TriangleIndex::TriangleIndex(const uint32_t index, const bool confined)
@@ -69,13 +49,13 @@ Voxelizer::Voxelizer(std::string filename, uint8_t maxDepth)
         {
             Material mat{};
             mat.name = material.name;
-            mat.color = { material.diffuse[0], material.diffuse[1], material.diffuse[2] };
-            mat.roughness = material.roughness;
-            mat.metallic = material.metallic;
-            mat.ior = material.ior;
-            mat.emission = material.emission[0];
-            mat.albedoMap = material.diffuse_texname;
+            mat.diffuse = { material.diffuse[0], material.diffuse[1], material.diffuse[2] };
+            mat.ambient = { material.ambient[0], material.ambient[1], material.ambient[2] };
+            mat.specular = { material.specular[0], material.specular[1], material.specular[2] };
+            mat.specularComp = material.shininess;
+            mat.diffuseMap = material.diffuse_texname;
             mat.normalMap = material.normal_texname;
+            mat.specularMap = material.specular_texname;
 
             m_model.materials.push_back(mat);
         }
@@ -152,17 +132,106 @@ Voxelizer::Voxelizer(std::string filename, uint8_t maxDepth)
     }
 }
 
-MaterialProperties Material::toOctreeMaterial() const
+Octree::Material Material::toOctreeMaterial() const
 {
-    MaterialProperties mat;
-    mat.color = color;
-    mat.roughness = roughness;
-    mat.metallic = metallic;
-    mat.ior = ior;
-    mat.transmission = transmission;
-    mat.emission = emission;
+    Octree::Material mat{};
+    mat.ambient = ambient;
+    mat.diffuse = diffuse;
+    mat.specular = specular;
+    mat.specularComp = specularComp;
     return mat;
 }
+void Voxelizer::sampleVoxel(NodeRef& node) const
+{
+    LeafNode leafNode{ 0 };
+    TriangleLeafIndex closestLeaf{};
+    closestLeaf.d = FLT_MAX;
+    for (const TriangleLeafIndex& triangle : m_triangleLeafs)
+    {
+        if (triangle.d < closestLeaf.d)
+        {
+            closestLeaf = triangle;
+        }
+    }
+    glm::vec3 weights{1.0f - closestLeaf.baricentric.x - closestLeaf.baricentric.y, closestLeaf.baricentric.x, closestLeaf.baricentric.y};
+    Triangle closestT = getTriangle(m_triangles[closestLeaf.index.index]);
+    leafNode.setMaterial(getMaterialID(closestLeaf.index));
+    leafNode.setUV(closestT.getWeightedUV(weights));
+    leafNode.setNormal(closestT.getWeightedNormal(weights));
+    auto [leaf1, leaf2] = leafNode.split();
+    node.data1 = leaf1.toRaw();
+    node.data2 = leaf2.toRaw();
+}
+
+AABB Voxelizer::getModelAABB() const
+{
+    const float distX = std::abs(m_model.max.x - m_model.min.x);
+    const float distY = std::abs(m_model.max.y - m_model.min.y);
+    const float distZ = std::abs(m_model.max.z - m_model.min.z);
+    const float size = std::max(distX, std::max(distY, distZ)) / 1.9f;
+    return { (m_model.min + m_model.max) / 2.0f, size };
+}
+
+const std::vector<Material>& Voxelizer::getMaterials() const
+{
+    return m_model.materials;
+}
+
+std::string Voxelizer::getMaterialFilePath() const
+{
+    return m_baseDir;
+}
+
+std::array<glm::vec3, 3> Voxelizer::getTrianglePos(const TriangleIndex triangle) const
+{
+    const TriangleRootIndex rootIndex = m_triangles[triangle.index];
+
+    return getTrianglePos(rootIndex);
+}
+
+Triangle Voxelizer::getTriangle(const TriangleIndex triangle) const
+{
+    const TriangleRootIndex rootIndex = m_triangles[triangle.index];
+    return getTriangle(rootIndex);
+}
+
+Material Voxelizer::getMaterial(const TriangleIndex triangle) const
+{
+    return m_model.materials[getMaterialID(triangle)];
+}
+
+uint16_t Voxelizer::getMaterialID(const TriangleIndex triangle) const
+{
+    return m_triangles[triangle.index].meshIndex;
+}
+
+std::array<glm::vec3, 3> Voxelizer::getTrianglePos(const TriangleRootIndex rootIndex) const
+{
+    std::array<glm::vec3, 3> trianglePos{};
+    const std::vector<Vertex>& vertices = m_model.meshes[rootIndex.meshIndex].vertices;
+    const std::vector<uint32_t>& indices = m_model.meshes[rootIndex.meshIndex].indices;
+    trianglePos[0] = vertices[indices[rootIndex.index]].pos;
+    trianglePos[1] = vertices[indices[rootIndex.index + 1]].pos;
+    trianglePos[2] = vertices[indices[rootIndex.index + 2]].pos;
+    return trianglePos;
+}
+
+Triangle Voxelizer::getTriangle(TriangleRootIndex rootIndex) const
+{
+    Triangle trianglePos{};
+    const std::vector<Vertex>& vertices = m_model.meshes[rootIndex.meshIndex].vertices;
+    const std::vector<uint32_t>& indices = m_model.meshes[rootIndex.meshIndex].indices;
+    trianglePos.v0 = vertices[indices[rootIndex.index]];
+    trianglePos.v1 = vertices[indices[rootIndex.index + 1]];
+    trianglePos.v2 = vertices[indices[rootIndex.index + 2]];
+    return trianglePos;
+}
+
+Material Voxelizer::getMaterial(const TriangleRootIndex rootIndex) const
+{
+    return m_model.materials[rootIndex.meshIndex];
+}
+
 
 // TESTS
 
@@ -263,7 +332,7 @@ bool Voxelizer::doesAABBInteresect(const AABB& shape, const bool isLeaf, const u
     for (uint32_t i = 0; i < m_triangleTree[depth - 1].size(); i++)
     {
         const TriangleIndex triangle = m_triangleTree[depth - 1][i];
-        if (triangle.isConfined()) continue;
+        if (triangle.confined) continue;
 
         std::array<glm::vec3, 3> tri = getTrianglePos(triangle);
         if (isLeaf)
@@ -286,93 +355,15 @@ bool Voxelizer::doesAABBInteresect(const AABB& shape, const bool isLeaf, const u
     return !m_triangleTree[depth].empty();
 }
 
-void Voxelizer::sampleVoxel(NodeRef& node) const
-{
-    LeafNode leafNode{ 0 };
-    TriangleLeafIndex closestLeaf{};
-    closestLeaf.d = FLT_MAX;
-    for (const TriangleLeafIndex& triangle : m_triangleLeafs)
-    {
-        if (triangle.d < closestLeaf.d)
-        {
-            closestLeaf = triangle;
-        }
-    }
-    glm::vec3 weights{1.0f - closestLeaf.baricentric.x - closestLeaf.baricentric.y, closestLeaf.baricentric.x, closestLeaf.baricentric.y};
-    Triangle closestT = getTriangle(m_triangles[closestLeaf.index.getIndex()]);
-    leafNode.setMaterial(getMaterialID(closestLeaf.index));
-    leafNode.setUV(closestT.getWeightedUV(weights));
-    leafNode.setNormal(closestT.getWeightedNormal(weights));
-    auto [leaf1, leaf2] = leafNode.split();
-    node.data1 = leaf1.toRaw();
-    node.data2 = leaf2.toRaw();
-}
+// VOXELIZATION GLOBAL FUNCTION
 
-AABB Voxelizer::getModelAABB() const
+NodeRef Voxelizer::voxelize(const AABB& nodeShape, const uint8_t depth, const uint8_t maxDepth, void* data)
 {
-    const float distX = std::abs(m_model.max.x - m_model.min.x);
-    const float distY = std::abs(m_model.max.y - m_model.min.y);
-    const float distZ = std::abs(m_model.max.z - m_model.min.z);
-    const float size = std::max(distX, std::max(distY, distZ)) / 1.9f;
-    return { (m_model.min + m_model.max) / 2.0f, size };
-}
-
-const std::vector<Material>& Voxelizer::getMaterials() const
-{
-    return m_model.materials;
-}
-
-std::string Voxelizer::getMaterialFilePath() const
-{
-    return m_baseDir;
-}
-
-std::array<glm::vec3, 3> Voxelizer::getTrianglePos(const TriangleIndex triangle) const
-{
-    const TriangleRootIndex rootIndex = m_triangles[triangle.getIndex()];
-
-    return getTrianglePos(rootIndex);
-}
-
-Triangle Voxelizer::getTriangle(const TriangleIndex triangle) const
-{
-    const TriangleRootIndex rootIndex = m_triangles[triangle.getIndex()];
-    return getTriangle(rootIndex);
-}
-
-Material Voxelizer::getMaterial(const TriangleIndex triangle) const
-{
-    return m_model.materials[getMaterialID(triangle)];
-}
-
-uint16_t Voxelizer::getMaterialID(const TriangleIndex triangle) const
-{
-    return m_triangles[triangle.getIndex()].getMeshIndex();
-}
-
-std::array<glm::vec3, 3> Voxelizer::getTrianglePos(const TriangleRootIndex rootIndex) const
-{
-    std::array<glm::vec3, 3> trianglePos{};
-    const std::vector<Vertex>& vertices = m_model.meshes[rootIndex.getMeshIndex()].vertices;
-    const std::vector<uint32_t>& indices = m_model.meshes[rootIndex.getMeshIndex()].indices;
-    trianglePos[0] = vertices[indices[rootIndex.getIndex()]].pos;
-    trianglePos[1] = vertices[indices[rootIndex.getIndex() + 1]].pos;
-    trianglePos[2] = vertices[indices[rootIndex.getIndex() + 2]].pos;
-    return trianglePos;
-}
-
-Triangle Voxelizer::getTriangle(TriangleRootIndex rootIndex) const
-{
-    Triangle trianglePos{};
-    const std::vector<Vertex>& vertices = m_model.meshes[rootIndex.getMeshIndex()].vertices;
-    const std::vector<uint32_t>& indices = m_model.meshes[rootIndex.getMeshIndex()].indices;
-    trianglePos.v0 = vertices[indices[rootIndex.getIndex()]];
-    trianglePos.v1 = vertices[indices[rootIndex.getIndex() + 1]];
-    trianglePos.v2 = vertices[indices[rootIndex.getIndex() + 2]];
-    return trianglePos;
-}
-
-Material Voxelizer::getMaterial(const TriangleRootIndex rootIndex) const
-{
-    return m_model.materials[rootIndex.getMeshIndex()];
+    Voxelizer& voxelizer = *static_cast<Voxelizer*>(data);
+    NodeRef nodeRef{};
+    nodeRef.isLeaf = depth >= maxDepth;
+    nodeRef.exists = voxelizer.doesAABBInteresect(nodeShape, nodeRef.isLeaf, depth);
+    if (nodeRef.exists && nodeRef.isLeaf)
+        voxelizer.sampleVoxel(nodeRef);
+    return nodeRef;
 }

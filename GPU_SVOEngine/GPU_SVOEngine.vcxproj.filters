@@ -33,6 +33,15 @@
     <ClCompile Include="src\Octree\voxelizer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\Octree\octree_nodes.hpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Octree\octree_helper.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Octree\octree_nodes.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
@@ -50,10 +59,10 @@
     <ClInclude Include="src\Octree\octree.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\Octree\octree_generation.hpp">
+    <ClInclude Include="src\Octree\voxelizer.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\Octree\voxelizer.hpp">
+    <ClInclude Include="src\Octree\octree_helper.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

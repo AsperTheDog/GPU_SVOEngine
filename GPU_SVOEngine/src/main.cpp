@@ -2,44 +2,48 @@
 #include "utils/logger.hpp"
 
 #include "Octree/octree.hpp"
-#include "Octree/octree_generation.hpp"
+#include "Octree/voxelizer.hpp"
 
 //#define EXIT_ON_NO_ARGS
 
-uint8_t depth = 11;
+#ifdef EXIT_ON_NO_ARGS
+// Default values for release
 std::string loadPath = "assets/octree.bin";
 std::string savePath = "assets/octree.bin";
 std::string modelPath = "assets/test_ico.obj";
-#ifdef EXIT_ON_NO_ARGS
+uint8_t depth = 11;
 bool loadFlag = false;
 bool voxelizeFlag = false;
 bool saveFlag = false;
 #else
+// Values to use when executing from IDE
+std::string loadPath = "assets/octree.bin";
+std::string savePath = "assets/octree.bin";
+std::string modelPath = "assets/sponza/sponza.obj";
+uint8_t depth = 12;
 bool loadFlag = false;
 bool voxelizeFlag = true;
-bool saveFlag = false;
+bool saveFlag = true;
 #endif
 
 void printHelpAndExit()
 {
-    std::cout << "Usage: ./GPU_SVOEngine [options]\n"
+    std::cout << "Usage: GPU_SVOEngine.exe [options]\n"
         << "Options:\n"
         << "  -d <depth>          Set the depth of the octree, ignored if -l is added\n"
         << "  -m <path>           Load model from file, ignored if -l is added\n"
         << "  -s <path>           Save octree to file, ignored if -m is not added or if -l is added\n"
         << "  -l <path>           Load octree from file\n";
-#ifdef EXIT_ON_NO_ARGS
     exit(EXIT_SUCCESS);
-#endif
 }
 
 void parseCommands(const int argc, char* argv[])
 {
-    // If argc is empty, print help and exit
     if (argc == 1 || argc % 2 == 0)
     {
+#ifdef EXIT_ON_NO_ARGS
         printHelpAndExit();
-#ifndef EXIT_ON_NO_ARGS
+#else
         return;
 #endif
     }
@@ -119,22 +123,22 @@ int main(const int argc, char* argv[])
 
         Logger::setRootContext("Octree init");
         Octree octree{ depth };
-
-        if (voxelizeFlag)
-        {
-            Voxelizer voxelizer{ modelPath, depth };
-            octree.generate(voxelizer.getModelAABB(), voxelize, &voxelizer);
-            octree.setMaterialPath(voxelizer.getMaterialFilePath());
-            for (const Material& mat : voxelizer.getMaterials())
-                octree.addMaterial(mat.toOctreeMaterial(), mat.albedoMap, mat.normalMap);
-            if (saveFlag)
-                octree.dump(savePath);
-        }
-
+        
         if (loadFlag)
         {
             octree.load(loadPath);
         }
+        else if (voxelizeFlag)
+        {
+            Voxelizer voxelizer{ modelPath, depth };
+            octree.generate(voxelizer.getModelAABB(), Voxelizer::voxelize, &voxelizer);
+            octree.setMaterialPath(voxelizer.getMaterialFilePath());
+            for (const Material& mat : voxelizer.getMaterials())
+                octree.addMaterial(mat.toOctreeMaterial(), mat.diffuseMap, mat.normalMap, mat.specularMap);
+            if (saveFlag)
+                octree.dump(savePath);
+        }
+        
         octree.packAndFinish();
 
         Engine engine{ static_cast<uint32_t>(octree.getMaterialTextures().size()) };
@@ -152,5 +156,5 @@ int main(const int argc, char* argv[])
     }
 #endif
 
-return EXIT_SUCCESS;
+    return EXIT_SUCCESS;
 }

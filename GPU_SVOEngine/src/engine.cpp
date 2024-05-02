@@ -21,8 +21,7 @@
 
 struct PushConstantData
 {
-    alignas(16) glm::vec4 camPos;
-    alignas(16) glm::vec3 camDir;
+    alignas(16) glm::vec3 camPos;
     alignas(16) glm::mat4 viewProj;
     alignas(16) glm::vec3 sunDirection;
     alignas(16) glm::vec3 skyColor;
@@ -48,7 +47,7 @@ VulkanGPU chooseCorrectGPU()
     throw std::runtime_error("No discrete GPU found");
 }
 
-Engine::Engine(uint32_t samplerImageCount) : cam({ 0, 0, 0 }, { 0, 0, 0 }), m_window("Vulkan", 1920, 1080)
+Engine::Engine(const uint32_t samplerImageCount) : cam({ 0, 0, 0 }, { 0, 0, 0 }), m_window("Vulkan", 1920, 1080)
 {
     Logger::setRootContext("Engine init");
 #ifndef _DEBUG
@@ -84,10 +83,10 @@ Engine::Engine(uint32_t samplerImageCount) : cam({ 0, 0, 0 }, { 0, 0, 0 }), m_wi
     m_graphicsCmdBufferID = device.createCommandBuffer(graphicsQueueFamily, 0, false);
 
     createRenderPass();
-    samplerImageCount = std::max(samplerImageCount, 1U);
-    m_pipelineID = createGraphicsPipeline(samplerImageCount, "shaders/raytracing.frag", {{"SAMPLER_ARRAY_SIZE", std::to_string(samplerImageCount)}});
-    m_intersectPipelineID = createGraphicsPipeline(samplerImageCount, "shaders/raytracing.frag", {{"SAMPLER_ARRAY_SIZE", std::to_string(samplerImageCount)}, {"INTERSECTION_TEST", "true"}});
-    m_intersectColorPipelineID = createGraphicsPipeline(samplerImageCount, "shaders/raytracing.frag", {{"SAMPLER_ARRAY_SIZE", std::to_string(samplerImageCount)}, {"INTERSECTION_TEST", "true"}, {"INTERSECTION_COLOR", "true"}});
+    m_samplerImageCount = std::max(samplerImageCount, 1U);
+    m_pipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {});
+    m_intersectPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}});
+    m_intersectColorPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}, {"INTERSECTION_COLOR", "true"}});
 
     m_framebuffers.resize(swapchain.getImageCount());
     for (uint32_t i = 0; i < swapchain.getImageCount(); i++)
@@ -354,7 +353,7 @@ void Engine::createRenderPass()
     Logger::popContext();
 }
 
-uint32_t Engine::createGraphicsPipeline(const uint32_t samplerImageCount, const std::string& fragmentShader, const std::vector<VulkanShader::MacroDef>& macros)
+uint32_t Engine::createGraphicsPipeline(const uint32_t samplerImageCount, const std::string& fragmentShader, std::vector<VulkanShader::MacroDef> macros)
 {
     Logger::pushContext("Create Pipeline");
 
@@ -390,6 +389,7 @@ uint32_t Engine::createGraphicsPipeline(const uint32_t samplerImageCount, const 
         m_pipelineLayoutID = device.createPipelineLayout({ m_octreeDescrSetLayout }, pushConstants);
     }
 
+    macros.push_back({"SAMPLER_ARRAY_SIZE", std::to_string(samplerImageCount)});
     const uint32_t vertexShaderID = device.createShader("shaders/raytracing.vert", VK_SHADER_STAGE_VERTEX_BIT, {});
     const uint32_t fragmentShaderID = device.createShader(fragmentShader, VK_SHADER_STAGE_FRAGMENT_BIT, macros);
 
@@ -528,7 +528,6 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
     const Camera::Data camData = cam.getData();
     const PushConstantData pushConstants{
         camData.position,
-        cam.getDir(),
         camData.invPVMatrix,
         m_sunlightDir,
         m_skyColor,
@@ -618,8 +617,33 @@ void Engine::drawImgui()
 	ImGui::DragFloat("Contrast", &m_contrast, 0.001f, 0, 1);
 	ImGui::DragFloat("Gamma", &m_gamma, 0.001f, 0, 4);
     ImGui::Separator();
+    if (ImGui::Button("Reload shaders"))
+        updateShader();
     ImGui::Checkbox("Intersection test", &m_intersectionTest);
     if (m_intersectionTest)
         ImGui::Checkbox("Enable color intersection", &m_intersectionTestColor);
     ImGui::End();
+}
+
+void Engine::updateShader()
+{
+    VulkanDevice& device = VulkanContext::getDevice(m_deviceID);
+
+    try
+    {
+        const uint32_t oldPipeline = m_pipelineID;
+        m_pipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {});
+        device.freePipeline(oldPipeline);
+        const uint32_t oldIntersectPipeline = m_intersectPipelineID;
+        m_intersectPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}});
+        device.freePipeline(oldIntersectPipeline);
+        const uint32_t oldIntersectColorPipeline = m_intersectColorPipelineID;
+        m_intersectColorPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}, {"INTERSECTION_COLOR", "true"}});
+        device.freePipeline(oldIntersectColorPipeline);
+    }
+    catch (const std::exception& e)
+    {
+        Logger::print(std::string("Failed to reload shaders: ") + e.what(), Logger::ERR);
+    }
+    
 }

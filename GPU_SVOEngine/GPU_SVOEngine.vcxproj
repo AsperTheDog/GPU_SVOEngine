@@ -102,7 +102,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;DEBUG_STRUCTURE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;$(ProjectDir)vendor\tinyobjloader;$(ProjectDir)vendor\stb;$(SolutionDir)ImGui\vendor\imgui;$(SolutionDir)VkPlayground\repo\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
@@ -142,6 +142,9 @@
     <ClCompile Include="src\camera.cpp" />
     <ClCompile Include="src\Octree\octree.cpp" />
     <ClCompile Include="src\engine.cpp" />
+    <ClCompile Include="src\Octree\octree_helper.cpp" />
+    <ClCompile Include="src\Octree\octree_nodes.cpp" />
+    <ClCompile Include="src\Octree\octree_nodes.hpp" />
     <ClCompile Include="src\Octree\voxelizer.cpp" />
     <ClCompile Include="src\sdl_window.cpp" />
     <ClCompile Include="src\main.cpp" />
@@ -150,8 +153,8 @@
     <ClInclude Include="src\camera.hpp" />
     <ClInclude Include="src\engine.hpp" />
     <ClInclude Include="resource.h" />
-    <ClInclude Include="src\Octree\octree_generation.hpp" />
     <ClInclude Include="src\Octree\octree.hpp" />
+    <ClInclude Include="src\Octree\octree_helper.hpp" />
     <ClInclude Include="src\Octree\voxelizer.hpp" />
     <ClInclude Include="src\sdl_window.hpp" />
   </ItemGroup>

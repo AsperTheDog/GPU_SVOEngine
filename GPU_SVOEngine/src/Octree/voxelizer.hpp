@@ -6,6 +6,8 @@
 
 #include "octree.hpp"
 
+// MODEL DATA
+
 struct Vertex
 {
     glm::vec3 pos;
@@ -26,7 +28,6 @@ template<> struct std::hash<Vertex>
 	}
 };
 
-
 struct Mesh
 {
     std::vector<Vertex> vertices;
@@ -36,16 +37,15 @@ struct Mesh
 struct Material
 {
     std::string name;
-    glm::vec3 color;
-    float roughness;
-    float metallic;
-    float ior;
-    float transmission;
-    float emission;
-    std::string albedoMap;
+    glm::vec3 ambient;
+    glm::vec3 diffuse;
+    glm::vec3 specular;
+    float specularComp;
+    std::string diffuseMap;
     std::string normalMap;
+    std::string specularMap;
 
-    [[nodiscard]] MaterialProperties toOctreeMaterial() const;
+    [[nodiscard]] Octree::Material toOctreeMaterial() const;
 };
 
 struct Model
@@ -56,6 +56,8 @@ struct Model
     glm::vec3 min{FLT_MAX};
     glm::vec3 max{FLT_MIN};
 };
+
+// VOXELIZER HELPER STRUCTS
 
 struct Triangle
 {
@@ -80,18 +82,12 @@ struct TriangleRootIndex
 {
     uint16_t meshIndex;
     uint32_t index;
-
-    [[nodiscard]] uint16_t getMeshIndex() const;
-    [[nodiscard]] uint32_t getIndex() const;
 };
 
 struct TriangleIndex
 {
     uint32_t index : 31 = 0;
     uint32_t confined : 1 = 0;
-
-    [[nodiscard]] uint32_t getIndex() const;
-    [[nodiscard]] bool isConfined() const;
 
     TriangleIndex(uint32_t index, bool confined);
 };
@@ -103,6 +99,8 @@ struct TriangleLeafIndex
     bool hit = false;
     TriangleIndex index{0, false};
 };
+
+// VOXELIZER
 
 class Voxelizer
 {
@@ -119,6 +117,8 @@ public:
     [[nodiscard]] const std::vector<Material>& getMaterials() const;
 
     [[nodiscard]] std::string getMaterialFilePath() const;
+
+    static NodeRef voxelize(const AABB& nodeShape, const uint8_t depth, const uint8_t maxDepth, void* data);
 
 private:
     [[nodiscard]] std::array<glm::vec3, 3> getTrianglePos(TriangleIndex triangle) const;

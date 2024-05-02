@@ -5,8 +5,7 @@
 #define PI 3.14159265359
 
 layout ( push_constant ) uniform PushConstants {
-	vec4 camPos;
-    vec3 camDir;
+	vec3 camPos;
     mat4 invPVMatrix;
 
     vec3 sunDirection;
@@ -23,14 +22,13 @@ layout ( push_constant ) uniform PushConstants {
 };
 
 struct Material {
-   vec3 color;
-   float roughness;
-   float metallic;
-   float ior;
-   float transmission;
-   float emission;
-   uint albedoMap;
-   uint normalMap;
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+    float specularComp;
+    uint diffuseMap;
+    uint normalMap;
+    uint specularMap;
 };
 
 layout(set = 0, binding = 0) buffer OctreeData {
@@ -280,25 +278,30 @@ vec3 colorCorrection(vec3 color)
 vec3 calculateLighting(Material mat, vec2 uv, vec3 normal, vec3 position)
 {
     vec3 norm_sunDirection = normalize(sunDirection);
-    vec3 norm_normal = normalize(normal);
-    vec3 norm_camDir = normalize(camDir);
-	vec3 reflectDir = reflect(-norm_sunDirection, norm_normal);
-
-    vec3 color = vec3(1.0, 1.0, 1.0);
-    if (mat.albedoMap < SAMPLER_ARRAY_SIZE) 
-        color *= texture(tex[mat.albedoMap], uv).rgb;
-
-    vec3 amb = color * 0.05;
-    float diff = clamp(dot(norm_normal, norm_sunDirection), 0.0, 1.0);
+    vec3 norm_camDir = normalize(camPos - position);
     vec3 halfV = normalize(norm_sunDirection + norm_camDir);
-    float shininess = clamp(sqrt(2.0 / (mat.roughness + 2)), 0.0, 1.0);
-    float spec = pow(max(dot(norm_normal, halfV), 0.0), shininess * 4);
+    
+    vec3 diffAmbTexel = vec3(1.0);
+    if (mat.diffuseMap < SAMPLER_ARRAY_SIZE) 
+        diffAmbTexel = texture(tex[mat.diffuseMap], uv).rgb;
 
-    vec3 ambient = sunColor * amb * color;
-    vec3 diffuse = sunColor * diff * color;
-    vec3 specular = sunColor * spec * color;
+    float specularTexel = 1.0;
+    if (mat.specularMap < SAMPLER_ARRAY_SIZE) 
+        specularTexel = texture(tex[mat.specularMap], uv).r;
 
-    return (amb + diffuse + specular);
+    vec3 diffuseColor = mat.diffuse * diffAmbTexel;
+    vec3 ambientColor = mat.ambient * diffAmbTexel;
+    vec3 specularColor = mat.specular * specularTexel;
+
+    float amb = 0.05;
+    float diff = clamp(dot(normal, norm_sunDirection), 0.0, 1.0);
+    float spec = pow(max(dot(normal, halfV), 0.0), mat.specularComp);
+
+    vec3 ambient = sunColor * amb * ambientColor;
+    vec3 diffuse = sunColor * diff * diffuseColor;
+    vec3 specular = sunColor * spec * specularColor;
+
+    return (ambient + diffuse + specular);
 }
 
 //*********************

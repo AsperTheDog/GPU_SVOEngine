@@ -5,180 +5,9 @@
 
 #include <glm/glm.hpp>
 
-struct LeafNode1;
-struct LeafNode2;
+#include "octree_nodes.hpp"
 
 enum { NEAR_PTR_MAX = 0x7FFF };
-
-#ifdef _DEBUG
-#define DEBUG_STRUCTURE
-#endif
-
-#ifdef DEBUG_STRUCTURE
-#include <string>
-#endif
-
-// Helper classes
-
-class NearPtr
-{
-public:
-    explicit NearPtr(uint16_t ptr, bool isFar);
-
-    [[nodiscard]] uint16_t getPtr() const;
-    [[nodiscard]] bool isFar() const;
-
-    [[nodiscard]] uint16_t toRaw() const;
-
-    void setPtr(uint16_t ptr);
-    void setFar(bool isFar);
-
-private:
-    uint16_t addr : 15;
-    uint16_t farFlag : 1;
-};
-
-class BitField
-{
-public:
-    explicit BitField(uint8_t field);
-
-    [[nodiscard]] bool getBit(uint8_t index) const;
-    void setBit(uint8_t index, bool value);
-
-    [[nodiscard]] uint8_t toRaw() const;
-
-    bool operator==(const BitField& other) const;
-
-private:
-    uint8_t field;
-};
-
-// Octree structures
-
-struct BranchNode
-{
-    explicit BranchNode(uint32_t raw);
-
-    BitField leafMask{ 0 };
-    BitField childMask{ 0 };
-    NearPtr ptr{ 0, false };
-
-    [[nodiscard]] uint32_t toRaw() const;
-};
-
-struct LeafNode
-{
-    explicit LeafNode(uint64_t raw);
-
-    uint64_t normalz : 10;
-    uint64_t normaly : 10;
-    uint64_t normalx : 10;
-    uint64_t material : 10;
-    uint64_t uvy : 12;
-    uint64_t uvx : 12;
-
-    void setUV(glm::vec2 uv);
-    void setNormal(const glm::vec3& normal);
-    void setMaterial(uint16_t material);
-
-    [[nodiscard]] glm::vec2 getUV() const;
-    [[nodiscard]] glm::vec3 getNormal() const;
-    [[nodiscard]] uint16_t getMaterial(LeafNode1 other) const;
-
-    [[nodiscard]] uint64_t toRaw() const;
-    [[nodiscard]] std::pair<LeafNode1, LeafNode2> split() const;
-
-    static LeafNode combine(LeafNode1 leafNode1, LeafNode2 leafNode2);
-};
-
-struct LeafNode1
-{
-    explicit LeafNode1(uint32_t raw);
-
-    
-    uint32_t material : 8;
-    uint32_t uvy : 12;
-    uint32_t uvx : 12;
-
-    void setUV(const glm::vec2& uv);
-    void set(uint16_t material);
-
-    [[nodiscard]] glm::vec2 getUV() const;
-    [[nodiscard]] uint16_t getMaterial(LeafNode2 other) const;
-
-    [[nodiscard]] uint32_t toRaw() const;
-};
-
-struct LeafNode2
-{
-    explicit LeafNode2(uint32_t raw);
-
-    uint32_t normalz : 10;
-    uint32_t normaly : 10;
-    uint32_t normalx : 10;
-    uint32_t material : 2;
-
-    void setNormal(const glm::vec3& normal);
-    void setMaterial(uint16_t material);
-
-    [[nodiscard]] glm::vec3 getNormal() const;
-    [[nodiscard]] uint16_t getMaterial(LeafNode1 other) const;
-
-    [[nodiscard]] uint32_t toRaw() const;
-};
-
-struct FarNode
-{
-    explicit FarNode(uint32_t raw);
-
-    uint32_t ptr;
-
-    [[nodiscard]] uint32_t toRaw() const;
-};
-
-struct MaterialProperties
-{
-    alignas(16) glm::vec3 color{1.0f, 1.0f, 1.0f};
-    alignas(4) float roughness = 1.0f;
-    alignas(4) float metallic = 0.0f;
-    alignas(4) float ior = 0.0f;
-    alignas(4) float transmission = 0.0f;
-    alignas(4) float emission = 0.0f;
-    alignas(4) uint32_t albedoMap = 500;
-    alignas(4) uint32_t normalMap = 500;
-};
-
-#ifdef DEBUG_STRUCTURE
-enum Type : uint8_t
-{
-    BRANCH_NODE = 0,
-    LEAF_NODE1 = 1,
-    LEAF_NODE2 = 2,
-    FAR_NODE = 3
-};
-
-struct DebugOctreeNode
-{
-    union Data
-    {
-        BranchNode branchNode;
-        LeafNode1 leafNode1;
-        LeafNode2 leafNode2;
-        FarNode farNode;
-
-        Data();
-    } data;
-
-    DebugOctreeNode() = default;
-    explicit DebugOctreeNode(Type type);
-    void update(uint32_t raw, Type type);
-    [[nodiscard]] uint32_t pack(Type type) const;
-    [[nodiscard]] std::string toString(uint32_t position, Type type) const;
-};
-#endif
-
-// Construction structures
 
 struct NodeRef
 {
@@ -205,25 +34,36 @@ struct FarNodeRef
 
 // Statistics data
 
-struct OctreeStats
-{
-    uint64_t voxels = 0;
-    uint64_t farPtrs = 0;
-    uint16_t materials = 0;
-    float constructionTime = 0;
-    float saveTime = 0;
-};
-
 typedef NodeRef(*ProcessFunc)(const AABB&, uint8_t, uint8_t, void*);
 
 class Octree
 {
 public:
+    struct Material
+    {
+        alignas(16) glm::vec3 ambient = {1.0, 1.0, 1.0};
+        alignas(16) glm::vec3 diffuse = {1.0, 1.0, 1.0};
+        alignas(16) glm::vec3 specular = {1.0, 1.0, 1.0};
+        alignas(4) float specularComp = 0.0;
+        alignas(4) uint32_t diffuseMap = 500;
+        alignas(4) uint32_t normalMap = 500;
+        alignas(4) uint32_t specularMap = 500;
+    };
+
+    struct Stats
+    {
+        uint64_t voxels = 0;
+        uint64_t farPtrs = 0;
+        uint16_t materials = 0;
+        float constructionTime = 0;
+        float saveTime = 0;
+    };
+
     explicit Octree(uint8_t maxDepth);
     Octree (uint8_t maxDepth, std::string_view outputFile);
 
     [[nodiscard]] uint32_t getRaw(uint32_t index) const;
-    [[nodiscard]] MaterialProperties& getMaterialProps(uint32_t index);
+    [[nodiscard]] Material& getMaterialProps(uint32_t index);
     [[nodiscard]] const std::vector<std::string>& getMaterialTextures() const;
 
     [[nodiscard]] uint32_t getSize() const;
@@ -232,7 +72,7 @@ public:
     [[nodiscard]] uint32_t getMaterialByteSize() const;
     [[nodiscard]] uint8_t getDepth() const;
     [[nodiscard]] bool isReversed() const;
-    [[nodiscard]] OctreeStats getStats() const;
+    [[nodiscard]] Stats getStats() const;
     [[nodiscard]] bool isOctreeLoadedFromFile() const;
     [[nodiscard]] bool isFinished() const;
 
@@ -255,12 +95,12 @@ public:
     void load(std::string_view filename = "");
 
     void setMaterialPath(std::string_view path);
-    void addMaterial(MaterialProperties material, const std::string_view albedoMap, const std::string_view normalMap);
+    void addMaterial(Material material, std::string_view diffuseMap, std::string_view normalMap, std::string_view specularMap);
     void packAndFinish();
 
     void clear();
 
-#ifdef DEBUG_STRUCTURE
+#ifdef DEBUG_STRUCTURE // global define in Debug configuration
     [[nodiscard]] std::string toString() const;
     [[nodiscard]] Type getType(uint32_t index) const;
 #endif
@@ -269,7 +109,7 @@ private:
     void populate(AABB nodeShape, void* processData);
     NodeRef populateRec(AABB node, uint8_t currentDepth, void* processData);
 
-#ifdef DEBUG_STRUCTURE
+#ifdef DEBUG_STRUCTURE // global define in Debug configuration
     std::vector<DebugOctreeNode> m_data;
     std::vector<Type> m_types;
     [[nodiscard]] uint32_t get(uint32_t index) const;
@@ -278,7 +118,7 @@ private:
     uint32_t& get(uint32_t index);
 #endif
 
-    std::vector<MaterialProperties> m_materials;
+    std::vector<Material> m_materials;
     std::vector<std::string> m_materialTextures;
     std::string m_textureRootDir;
 
@@ -291,6 +131,6 @@ private:
     bool m_loadedFromFile = false;
     bool m_finished = false;
 
-    mutable OctreeStats m_stats{};
+    mutable Stats m_stats{};
 };
 

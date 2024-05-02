@@ -19,7 +19,7 @@ public:
 
 private:
 	void createRenderPass();
-    uint32_t createGraphicsPipeline(uint32_t samplerImageCount, const std::string& fragmentShader, const std::vector<VulkanShader::MacroDef>& macros);
+    uint32_t createGraphicsPipeline(const uint32_t samplerImageCount, const std::string& fragmentShader, std::vector<VulkanShader::MacroDef> macros);
 	uint32_t createFramebuffer(VkImageView colorAttachment, VkExtent2D newExtent) const;
 	void initImgui() const;
 
@@ -28,6 +28,8 @@ private:
 	void recordCommandBuffer(uint32_t framebufferID, ImDrawData* main_draw_data);
 
 	void drawImgui();
+
+    void updateShader();
 
 	Camera cam;
 
@@ -63,6 +65,7 @@ private:
     glm::vec3 m_sunColor{1.0, 1.0, 1.0};
     std::vector<std::pair<uint32_t, VkSampler>> m_octreeImages{};
 
+    uint32_t m_samplerImageCount = 0;
     VkDeviceSize m_octreeImagesMemUsage = 0;
 
     Octree* m_octree = nullptr;

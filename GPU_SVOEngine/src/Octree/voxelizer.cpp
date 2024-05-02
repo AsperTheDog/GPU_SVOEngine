@@ -24,11 +24,6 @@ glm::vec3 Triangle::getWeightedNormal(const glm::vec3 weights) const
     return v0.normal * weights.x + v1.normal * weights.y + v2.normal * weights.z;
 }
 
-TriangleIndex::TriangleIndex(const uint32_t index, const bool confined)
-    : index(index), confined(confined)
-{
-}
-
 Voxelizer::Voxelizer(std::string filename, uint8_t maxDepth)
 {
     {
@@ -117,19 +112,10 @@ Voxelizer::Voxelizer(std::string filename, uint8_t maxDepth)
         for (uint32_t j = 0; j < m_model.meshes[i].indices.size(); j += 3)
         {
             m_triangles.emplace_back(i, j);
-            m_triangleTree[0].emplace_back(m_triangles.size() - 1, false);
+            m_triangleTree[0].emplace_back(m_triangles.size() - 1);
         }
     }
     m_triangles.shrink_to_fit();
-
-    for (uint32_t i = 0; i < m_model.materials.size(); i++)
-    {
-        m_colorMap[i] = glm::vec3{ static_cast<float>(rand() % 16), static_cast<float>(rand() % 16), static_cast<float>(rand() % 16) };
-    }
-    if (m_colorMap.empty())
-    {
-        m_colorMap[0] = glm::vec3{ static_cast<float>(rand() % 16), static_cast<float>(rand() % 16), static_cast<float>(rand() % 16) };
-    }
 }
 
 Octree::Material Material::toOctreeMaterial() const
@@ -146,7 +132,7 @@ void Voxelizer::sampleVoxel(NodeRef& node) const
     LeafNode leafNode{ 0 };
     TriangleLeafIndex closestLeaf{};
     closestLeaf.d = FLT_MAX;
-    for (const TriangleLeafIndex& triangle : m_triangleLeafs)
+    for (const TriangleLeafIndex& triangle : m_triangleLeaves)
     {
         if (triangle.d < closestLeaf.d)
         {
@@ -154,7 +140,7 @@ void Voxelizer::sampleVoxel(NodeRef& node) const
         }
     }
     glm::vec3 weights{1.0f - closestLeaf.baricentric.x - closestLeaf.baricentric.y, closestLeaf.baricentric.x, closestLeaf.baricentric.y};
-    Triangle closestT = getTriangle(m_triangles[closestLeaf.index.index]);
+    Triangle closestT = getTriangle(m_triangles[closestLeaf.index]);
     leafNode.setMaterial(getMaterialID(closestLeaf.index));
     leafNode.setUV(closestT.getWeightedUV(weights));
     leafNode.setNormal(closestT.getWeightedNormal(weights));
@@ -182,27 +168,27 @@ std::string Voxelizer::getMaterialFilePath() const
     return m_baseDir;
 }
 
-std::array<glm::vec3, 3> Voxelizer::getTrianglePos(const TriangleIndex triangle) const
+std::array<glm::vec3, 3> Voxelizer::getTrianglePos(const uint32_t triangle) const
 {
-    const TriangleRootIndex rootIndex = m_triangles[triangle.index];
+    const TriangleRootIndex rootIndex = m_triangles[triangle];
 
     return getTrianglePos(rootIndex);
 }
 
-Triangle Voxelizer::getTriangle(const TriangleIndex triangle) const
+Triangle Voxelizer::getTriangle(const uint32_t triangle) const
 {
-    const TriangleRootIndex rootIndex = m_triangles[triangle.index];
+    const TriangleRootIndex rootIndex = m_triangles[triangle];
     return getTriangle(rootIndex);
 }
 
-Material Voxelizer::getMaterial(const TriangleIndex triangle) const
+Material Voxelizer::getMaterial(const uint32_t triangle) const
 {
     return m_model.materials[getMaterialID(triangle)];
 }
 
-uint16_t Voxelizer::getMaterialID(const TriangleIndex triangle) const
+uint16_t Voxelizer::getMaterialID(const uint32_t triangle) const
 {
-    return m_triangles[triangle.index].meshIndex;
+    return m_triangles[triangle].meshIndex;
 }
 
 std::array<glm::vec3, 3> Voxelizer::getTrianglePos(const TriangleRootIndex rootIndex) const
@@ -241,7 +227,7 @@ glm::vec3 axisGroup[] = {
     {0, 0, 1}
 };
 
-::TriangleLeafIndex Voxelizer::AABBTriangle6Connect(const TriangleIndex index, const AABB shape) const
+::TriangleLeafIndex Voxelizer::AABBTriangle6Connect(const uint32_t index, const AABB shape) const
 {
     TriangleLeafIndex current{shape.halfSize, {}, false};
     for (auto& axis : axisGroup)
@@ -327,31 +313,25 @@ bool Voxelizer::doesAABBInteresect(const AABB& shape, const bool isLeaf, const u
     if (depth == 0) return true;
 
     if (!isLeaf) m_triangleTree[depth].clear();
-    else m_triangleLeafs.clear();
+    else m_triangleLeaves.clear();
 
-    for (uint32_t i = 0; i < m_triangleTree[depth - 1].size(); i++)
+    for (const uint32_t triangle : m_triangleTree[depth - 1])
     {
-        const TriangleIndex triangle = m_triangleTree[depth - 1][i];
-        if (triangle.confined) continue;
-
         std::array<glm::vec3, 3> tri = getTrianglePos(triangle);
         if (isLeaf)
         {
             const TriangleLeafIndex result = AABBTriangle6Connect(triangle, shape);
             if (!result.hit) continue;
-            m_triangleLeafs.push_back(result);
+            m_triangleLeaves.push_back(result);
         }
         else
         {
             if (!intersectAABBTriangleSAT(tri[0], tri[1], tri[2], shape)) continue;
-            TriangleIndex triangleIndex{ triangle.index, false };
-            m_triangleTree[depth].push_back(triangleIndex);
+            m_triangleTree[depth].push_back(triangle);
         }
-        if (intersectAABBPoint(tri[0], shape) && intersectAABBPoint(tri[1], shape) && intersectAABBPoint(tri[2], shape))
-            m_triangleTree[depth - 1][i].confined = true;
     }
     if (isLeaf)
-        return !m_triangleLeafs.empty();
+        return !m_triangleLeaves.empty();
     return !m_triangleTree[depth].empty();
 }
 

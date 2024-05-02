@@ -10,7 +10,7 @@ class Octree;
 class Engine
 {
 public:
-    explicit Engine(uint32_t samplerImageCount);
+    explicit Engine(uint32_t samplerImageCount, uint8_t depth);
 	~Engine();
 
 	void configureOctreeBuffer(Octree& octree, float scale);
@@ -67,6 +67,8 @@ private:
 
     uint32_t m_samplerImageCount = 0;
     VkDeviceSize m_octreeImagesMemUsage = 0;
+    float m_voxelHalfDiagonal = 0.0;
+    uint8_t m_depth = 0;
 
     Octree* m_octree = nullptr;
 

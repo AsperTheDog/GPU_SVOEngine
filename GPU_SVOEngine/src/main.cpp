@@ -21,9 +21,9 @@ std::string loadPath = "assets/octree.bin";
 std::string savePath = "assets/octree.bin";
 std::string modelPath = "assets/sponza/sponza.obj";
 uint8_t depth = 12;
-bool loadFlag = false;
-bool voxelizeFlag = true;
-bool saveFlag = true;
+bool loadFlag = true;
+bool voxelizeFlag = false;
+bool saveFlag = false;
 #endif
 
 void printHelpAndExit()
@@ -141,7 +141,7 @@ int main(const int argc, char* argv[])
         
         octree.packAndFinish();
 
-        Engine engine{ static_cast<uint32_t>(octree.getMaterialTextures().size()) };
+        Engine engine{ static_cast<uint32_t>(octree.getMaterialTextures().size()), depth };
 
         Logger::setRootContext("Engine context init");
         engine.configureOctreeBuffer(octree, 100.0f);

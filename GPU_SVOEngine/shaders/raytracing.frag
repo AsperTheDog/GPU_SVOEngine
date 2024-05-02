@@ -2,8 +2,6 @@
 
 #extension GL_KHR_vulkan_glsl : enable
 
-#define PI 3.14159265359
-
 layout ( push_constant ) uniform PushConstants {
 	vec3 camPos;
     mat4 invPVMatrix;
@@ -39,7 +37,7 @@ layout(set = 0, binding = 1) buffer MaterialData {
   Material materials[];
 };
 
-layout(set = 0, binding = 2) uniform sampler2D tex[SAMPLER_ARRAY_SIZE];
+layout(set = 0, binding = 2) uniform sampler2D tex[SAMPLER_ARRAY_SIZE]; // SAMPLER_ARRAY_SIZE defined in the C++ code at runtime
 
 layout(location = 0) in vec2 fragScreenCoord;
 
@@ -64,26 +62,19 @@ struct LeafNode
     vec2 uv;
 };
 
-struct Node
-{
-    uint data;
-    bool isLeaf;
-};
-
 struct Collision 
 {
     bool hit;
-    LeafNode voxel;
+    uint voxelIndex;
     vec3 voxelPos;
+
+    #define NULL_COLLISION Collision(false, 0, vec3(0.0))
 };
 
 struct Ray
 {
     vec3 origin;
-    vec3 direction;
     vec3 invDirection;
-    float t;
-    Collision coll;
 #ifdef INTERSECTION_TEST
     float testTint;
 #endif
@@ -96,33 +87,10 @@ struct StackElem
     uint childCount;
 };
 
-vec3 childPositions[] = {
-    vec3(0, 0, 0),
-    vec3(0, 0, 1),
-    vec3(0, 1, 0),
-    vec3(0, 1, 1),
-    vec3(1, 0, 0),
-    vec3(1, 0, 1),
-    vec3(1, 1, 0),
-    vec3(1, 1, 1)
-};
-
-uint orders[8][8] = {
-    {7, 6, 5, 3, 4, 2, 1, 0}, // 0, 0, 0
-	{3, 2, 7, 1, 0, 6, 5, 4}, // 0, 0, 1
-    {5, 1, 7, 4, 3, 6, 0, 2}, // 0, 1, 0
-	{1, 0, 3, 5, 4, 2, 7, 6}, // 0, 1, 1
-    {6, 7, 2, 4, 5, 3, 0, 1}, // 1, 0, 0
-	{2, 6, 3, 0, 4, 7, 1, 5}, // 1, 0, 1
-    {4, 5, 6, 0, 7, 2, 1, 3}, // 1, 1, 0
-	{0, 4, 2, 1, 6, 3, 5, 7}  // 1, 1, 1
-};
-
 vec3 homogenize(vec4 p)
 {
     return p.xyz / p.w;
 }
-
 
 BranchNode parseBranch(uint node)
 {
@@ -137,44 +105,33 @@ BranchNode parseBranch(uint node)
 LeafNode parseLeaf(uint node1, uint node2)
 {
 	LeafNode n;
-	n.uv.x = float((node1 & 0xFFF00000) >> 20) / 0x0FFF;
-    n.uv.y = float((node1 & 0x000FFF00) >> 8) / 0x0FFF;
-    n.material = ((node1 & 0x000000FF) << 2) | ((node2 & 0xC0000000) >> 30);
+	n.uv.x =     float((node1 & 0xFFF00000) >> 20);
+    n.uv.y =     float((node1 & 0x000FFF00) >> 8);
+    n.material =      ((node1 & 0x000000FF) << 2);
+    n.material |=     ((node2 & 0xC0000000) >> 30);
     n.normal.x = float((node2 & 0x3FF00000) >> 20);
     n.normal.y = float((node2 & 0x000FFC00) >> 10);
-    n.normal.z = float(node2 & 0x000003FF);
+    n.normal.z =  float(node2 & 0x000003FF);
+
+    n.uv = n.uv / 0xFFF;
     n.normal = n.normal / 0x1FF - 1.0;
+
     if (n.normal.x != 0.0 || n.normal.y != 0.0 || n.normal.z != 0.0)
         n.normal = normalize(n.normal);
+
 	return n;
 }
 
 bool intersect(Ray ray, vec3 boxMin, vec3 boxMax)
 {
-    float t1 = (boxMin.x - ray.origin.x) * ray.invDirection.x;
-    float t2 = (boxMax.x - ray.origin.x) * ray.invDirection.x;
-    float t3 = (boxMin.y - ray.origin.y) * ray.invDirection.y;
-    float t4 = (boxMax.y - ray.origin.y) * ray.invDirection.y;
-    float t5 = (boxMin.z - ray.origin.z) * ray.invDirection.z;
-    float t6 = (boxMax.z - ray.origin.z) * ray.invDirection.z;
+    vec3 tm = (boxMin - ray.origin) * ray.invDirection;
+    vec3 tM = (boxMax - ray.origin) * ray.invDirection;
 	
-    float tmin = max(max(min(t1, t2), min(t3, t4)), min(t5, t6));
-    float tmax = min(min(max(t1, t2), max(t3, t4)), max(t5, t6));
+    float tmin = max(max(min(tm.x, tM.x), min(tm.y, tM.y)), min(tm.z, tM.z));
+    float tmax = min(min(max(tm.x, tM.x), max(tm.y, tM.y)), max(tm.z, tM.z));
 
     float finalT = tmin <= 0 ? tmax : tmin;
-    bool res = tmax >= tmin && finalT > 0;
-
-    return res;
-}
-
-uint getOctact(Ray ray)
-{
-    uint octant = 0;
-    if (ray.direction.x > 0) octant |= 1;
-    if (ray.direction.y > 0) octant |= 2;
-    if (ray.direction.z > 0) octant |= 4;
-
-    return octant;
+    return tmax >= tmin && finalT > 0;
 }
 
 uint getNextChild(inout StackElem stackElem, uint octant)
@@ -183,7 +140,7 @@ uint getNextChild(inout StackElem stackElem, uint octant)
     if (node.childMask == 0) return 8;
     while (stackElem.childCount < 8)
     {
-        uint next = orders[octant][stackElem.childCount];
+        uint next = stackElem.childCount ^ octant;
         if ((node.childMask & (1 << next)) != 0) return next;
         stackElem.childCount++;
     }
@@ -204,29 +161,29 @@ uint getMemoryPosOfChild(BranchNode node, uint child)
     return count;
 }
 
-void traceRay(inout Ray ray)
+Collision traceRay(inout Ray ray, uint octant)
 {
     float halfScale = octreeScale / 2.0;
     StackElem[20] stack;
     stack[0] = StackElem(0, vec3(-halfScale), 0);
     int stackPtr = 0;
 
-    uint octant = getOctact(ray);
-    if (!intersect(ray, vec3(-halfScale), vec3(halfScale))) return;
+    if (!intersect(ray, vec3(-halfScale), vec3(halfScale))) return NULL_COLLISION;
 
     while (true)
     {
         uint current = getNextChild(stack[stackPtr], octant);
-
         if (current > 7)
         {
+            // POP
             stackPtr--;
             if (stackPtr < 0) break;
             stack[stackPtr].childCount++;
             continue;
         }
         float size = pow(2.0, -(stackPtr + 1)) * octreeScale;
-        vec3 pos = stack[stackPtr].pos + size * childPositions[current];
+        vec3 offset = vec3((current & 4) >> 2, (current & 2) >> 1, current & 1);
+        vec3 pos = stack[stackPtr].pos + size * offset;
 #ifdef INTERSECTION_TEST
         ray.testTint += 0.0025;
 #endif
@@ -238,11 +195,11 @@ void traceRay(inout Ray ray)
             uint nextAddress = trueAddress + getMemoryPosOfChild(parent, current);
             if ((parent.leafMask & (1 << current)) != 0)
             {
-                ray.coll = Collision(true, parseLeaf(octree[nextAddress], octree[nextAddress + 1]), pos + vec3(size) / 2.0);
-                break;
+                return Collision(true, nextAddress, pos + vec3(size) / 2.0);
             }
             else
             {
+                // PUSH
                 stackPtr++;
                 stack[stackPtr] = StackElem(nextAddress, pos, 0);
                 continue;
@@ -250,9 +207,11 @@ void traceRay(inout Ray ray)
         }
         else
         {
+            // ADVANCE
             stack[stackPtr].childCount++;
         }
     }
+    return NULL_COLLISION;
 }
 
 //*********************
@@ -275,29 +234,45 @@ vec3 colorCorrection(vec3 color)
 	return color;
 }
 
-vec3 calculateLighting(Material mat, vec2 uv, vec3 normal, vec3 position)
+vec3 calculateLighting(Collision coll)
 {
-    vec3 norm_sunDirection = normalize(sunDirection);
-    vec3 norm_camDir = normalize(camPos - position);
-    vec3 halfV = normalize(norm_sunDirection + norm_camDir);
-    
+    LeafNode voxel = parseLeaf(octree[coll.voxelIndex], octree[coll.voxelIndex + 1]);
+    Material mat = materials[voxel.material];
+
     vec3 diffAmbTexel = vec3(1.0);
     if (mat.diffuseMap < SAMPLER_ARRAY_SIZE) 
-        diffAmbTexel = texture(tex[mat.diffuseMap], uv).rgb;
+        diffAmbTexel = texture(tex[mat.diffuseMap], voxel.uv).rgb;
+    vec3 ambientColor = mat.ambient * diffAmbTexel;
+    
+    float amb = 0.05;
+    vec3 ambient = sunColor * amb * ambientColor;
 
+    Ray shadowRay;
+    vec3 shadowDir = normalize(sunDirection);
+    shadowRay.origin = coll.voxelPos + shadowDir * VOXEL_HALF_DIAGONAL * octreeScale;
+    shadowRay.invDirection = 1.0 / shadowDir;
+    uint octant = 0;
+    if (shadowDir.x < 0) octant |= 4;
+    if (shadowDir.y < 0) octant |= 2;
+    if (shadowDir.z < 0) octant |= 1;
+    if (traceRay(shadowRay, octant).hit)
+    {
+        return ambient;
+    }
+
+    vec3 norm_sunDirection = normalize(sunDirection);
+    vec3 norm_camDir = normalize(camPos - coll.voxelPos);
+    vec3 halfV = normalize(norm_sunDirection + norm_camDir);
     float specularTexel = 1.0;
     if (mat.specularMap < SAMPLER_ARRAY_SIZE) 
-        specularTexel = texture(tex[mat.specularMap], uv).r;
+        specularTexel = texture(tex[mat.specularMap], voxel.uv).r;
 
     vec3 diffuseColor = mat.diffuse * diffAmbTexel;
-    vec3 ambientColor = mat.ambient * diffAmbTexel;
     vec3 specularColor = mat.specular * specularTexel;
 
-    float amb = 0.05;
-    float diff = clamp(dot(normal, norm_sunDirection), 0.0, 1.0);
-    float spec = pow(max(dot(normal, halfV), 0.0), mat.specularComp);
+    float diff = clamp(dot(voxel.normal, norm_sunDirection), 0.0, 1.0);
+    float spec = pow(max(dot(voxel.normal, halfV), 0.0), mat.specularComp);
 
-    vec3 ambient = sunColor * amb * ambientColor;
     vec3 diffuse = sunColor * diff * diffuseColor;
     vec3 specular = sunColor * spec * specularColor;
 
@@ -311,20 +286,23 @@ vec3 calculateLighting(Material mat, vec2 uv, vec3 normal, vec3 position)
 void main() {
     Ray ray;
     ray.origin = camPos.xyz;
-    ray.direction = normalize(homogenize(invPVMatrix * vec4(fragScreenCoord, 1.0, 1.0)) - ray.origin);
-    ray.invDirection = 1.0 / ray.direction;
-    ray.t = 0.0;
-    ray.coll = Collision(false, parseLeaf(0, 0), vec3(0, 0, 0));
+    vec3 direction = normalize(homogenize(invPVMatrix * vec4(fragScreenCoord, 1.0, 1.0)) - ray.origin);
+    ray.invDirection = 1.0 / direction;
 #ifdef INTERSECTION_TEST
     ray.testTint = 0.0;
 #endif
 
-    traceRay(ray);
+    uint octant = 0;
+    if (direction.x < 0) octant |= 4;
+    if (direction.y < 0) octant |= 2;
+    if (direction.z < 0) octant |= 1;
 
-    if (ray.coll.hit)
+    Collision coll = traceRay(ray, octant);
+
+    if (coll.hit)
     {
 #ifndef INTERSECTION_TEST
-        vec3 shaded = calculateLighting(materials[ray.coll.voxel.material], ray.coll.voxel.uv, ray.coll.voxel.normal, ray.coll.voxelPos);
+        vec3 shaded = calculateLighting(coll);
         outColor = vec4(colorCorrection(shaded), 1.0);
 #else
     #ifdef INTERSECTION_COLOR

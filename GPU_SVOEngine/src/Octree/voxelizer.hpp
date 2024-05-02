@@ -84,29 +84,27 @@ struct TriangleRootIndex
     uint32_t index;
 };
 
-struct TriangleIndex
-{
-    uint32_t index : 31 = 0;
-    uint32_t confined : 1 = 0;
-
-    TriangleIndex(uint32_t index, bool confined);
-};
-
 struct TriangleLeafIndex
 {
     float d = 0;
     glm::vec2 baricentric{0, 0};
     bool hit = false;
-    TriangleIndex index{0, false};
+    uint32_t index = 0;
 };
 
 // VOXELIZER
+
+struct OctreeAccStructure
+{
+    std::vector<std::vector<uint32_t>> m_triangleTree;
+    std::vector<TriangleLeafIndex> m_triangleLeafs;
+};
 
 class Voxelizer
 {
 public:
     explicit Voxelizer(std::string filename, uint8_t maxDepth);
-    [[nodiscard]] TriangleLeafIndex AABBTriangle6Connect(TriangleIndex index, AABB shape) const;
+    [[nodiscard]] TriangleLeafIndex AABBTriangle6Connect(uint32_t index, AABB shape) const;
 
     static bool intersectAABBTriangleSAT(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, AABB shape);
     static bool intersectAABBPoint(glm::vec3 point, AABB shape);
@@ -121,10 +119,10 @@ public:
     static NodeRef voxelize(const AABB& nodeShape, const uint8_t depth, const uint8_t maxDepth, void* data);
 
 private:
-    [[nodiscard]] std::array<glm::vec3, 3> getTrianglePos(TriangleIndex triangle) const;
-    [[nodiscard]] Triangle getTriangle(TriangleIndex triangle) const;
-    [[nodiscard]] Material getMaterial(TriangleIndex triangle) const;
-    [[nodiscard]] uint16_t getMaterialID(TriangleIndex triangle) const;
+    [[nodiscard]] std::array<glm::vec3, 3> getTrianglePos(uint32_t triangle) const;
+    [[nodiscard]] Triangle getTriangle(uint32_t triangle) const;
+    [[nodiscard]] Material getMaterial(uint32_t triangle) const;
+    [[nodiscard]] uint16_t getMaterialID(uint32_t triangle) const;
     [[nodiscard]] std::array<glm::vec3, 3> getTrianglePos(TriangleRootIndex rootIndex) const;
     [[nodiscard]] Triangle getTriangle(TriangleRootIndex rootIndex) const;
     [[nodiscard]] Material getMaterial(TriangleRootIndex rootIndex) const;
@@ -132,10 +130,8 @@ private:
     Model m_model;
 
     std::vector<TriangleRootIndex> m_triangles;
-    std::vector<std::vector<TriangleIndex>> m_triangleTree;
-    std::vector<TriangleLeafIndex> m_triangleLeafs;
-
-    std::unordered_map<uint32_t, glm::u8vec3> m_colorMap;
+    std::vector<std::vector<uint32_t>> m_triangleTree;
+    std::vector<TriangleLeafIndex> m_triangleLeaves;
 
     std::string m_baseDir;
 };

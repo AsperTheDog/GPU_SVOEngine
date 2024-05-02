@@ -47,13 +47,13 @@ VulkanGPU chooseCorrectGPU()
     throw std::runtime_error("No discrete GPU found");
 }
 
-Engine::Engine(const uint32_t samplerImageCount) : cam({ 0, 0, 0 }, { 0, 0, 0 }), m_window("Vulkan", 1920, 1080)
+Engine::Engine(const uint32_t samplerImageCount, const uint8_t depth) : cam({ 0, 0, 0 }, { 0, 0, 0 }), m_window("Vulkan", 1920, 1080)
 {
     Logger::setRootContext("Engine init");
 #ifndef _DEBUG
     VulkanContext::init(VK_API_VERSION_1_3, false, false, m_window.getRequiredVulkanExtensions());
 #else
-    VulkanContext::init(VK_API_VERSION_1_3, true, true, m_window.getRequiredVulkanExtensions());
+    VulkanContext::init(VK_API_VERSION_1_3, true, false, m_window.getRequiredVulkanExtensions());
 #endif
     m_window.createSurface(VulkanContext::getHandle());
 
@@ -82,11 +82,15 @@ Engine::Engine(const uint32_t samplerImageCount) : cam({ 0, 0, 0 }, { 0, 0, 0 })
     device.configureOneTimeQueue(m_transferQueuePos);
     m_graphicsCmdBufferID = device.createCommandBuffer(graphicsQueueFamily, 0, false);
 
+    m_depth = depth;
+    const float voxelSize = 1 / static_cast<float>(1 << m_depth);
+    m_voxelHalfDiagonal = std::sqrt(2.0f) * voxelSize / 2.0f + voxelSize / 10;
+
     createRenderPass();
     m_samplerImageCount = std::max(samplerImageCount, 1U);
-    m_pipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {});
-    m_intersectPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}});
-    m_intersectColorPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}, {"INTERSECTION_COLOR", "true"}});
+    m_pipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"VOXEL_HALF_DIAGONAL", std::to_string(m_voxelHalfDiagonal)}});
+    m_intersectPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}, {"VOXEL_HALF_DIAGONAL", std::to_string(m_voxelHalfDiagonal)}});
+    m_intersectColorPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}, {"INTERSECTION_COLOR", "true"}, {"VOXEL_HALF_DIAGONAL", std::to_string(m_voxelHalfDiagonal)}});
 
     m_framebuffers.resize(swapchain.getImageCount());
     for (uint32_t i = 0; i < swapchain.getImageCount(); i++)
@@ -568,6 +572,9 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
     Logger::popContext();
 }
 
+
+glm::vec3 sunDir = glm::normalize(glm::vec3{0.1, 1.0, 0.1});
+
 void Engine::drawImgui()
 {
     const ImGuiIO& io = ImGui::GetIO();
@@ -608,7 +615,7 @@ void Engine::drawImgui()
     ImGui::Separator();
     ImGui::SliderFloat("Sun direction", &m_sunRotation, -180.0f, 180.0f);
     const glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(m_sunRotation), {0.0f, 1.0f, 0.0f});
-    m_sunlightDir = glm::vec3(rotationMatrix * glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    m_sunlightDir = glm::vec3(rotationMatrix * glm::vec4(sunDir.x,sunDir.y, sunDir.z, 1.0f));
     ImGui::ColorEdit3("Sun color", &m_sunColor.x);
     ImGui::ColorEdit3("Sky color", &m_skyColor.x);
     ImGui::Separator();
@@ -632,13 +639,13 @@ void Engine::updateShader()
     try
     {
         const uint32_t oldPipeline = m_pipelineID;
-        m_pipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {});
+        m_pipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"VOXEL_HALF_DIAGONAL", std::to_string(m_voxelHalfDiagonal)}});
         device.freePipeline(oldPipeline);
         const uint32_t oldIntersectPipeline = m_intersectPipelineID;
-        m_intersectPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}});
+        m_intersectPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}, {"VOXEL_HALF_DIAGONAL", std::to_string(m_voxelHalfDiagonal)}});
         device.freePipeline(oldIntersectPipeline);
         const uint32_t oldIntersectColorPipeline = m_intersectColorPipelineID;
-        m_intersectColorPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}, {"INTERSECTION_COLOR", "true"}});
+        m_intersectColorPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}, {"INTERSECTION_COLOR", "true"}, {"VOXEL_HALF_DIAGONAL", std::to_string(m_voxelHalfDiagonal)}});
         device.freePipeline(oldIntersectColorPipeline);
     }
     catch (const std::exception& e)

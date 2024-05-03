@@ -577,6 +577,9 @@ void Engine::drawImgui()
 
     ImGui::Begin("Metrics");
     ImGui::Text("%.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+    ImGui::Separator();
+    ImGui::Text("Camera position: (%.3f, %.3f, %.3f)", cam.getPosition().x, cam.getPosition().y, cam.getPosition().z);
+    ImGui::Text("Camera direction: (%.3f, %.3f, %.3f)", cam.getDir().x, cam.getDir().y, cam.getDir().z);
 
     ImGui::End();
     ImGui::Begin("Octree stats");

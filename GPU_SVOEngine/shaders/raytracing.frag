@@ -296,7 +296,8 @@ vec3 calculateLighting(Collision coll)
     vec3 specularColor = mat.specular * specularTexel;
 
     float diff = clamp(dot(voxel.normal, norm_sunDirection), 0.0, 1.0);
-    float spec = pow(max(dot(voxel.normal, halfV), 0.0), mat.specularComp * 3);
+    float tmp = max(dot(voxel.normal, halfV), 0.0);
+    float spec = tmp == 0 || mat.specularComp == 0 ? 0 : pow(tmp, mat.specularComp * 3);
 
     vec3 diffuse = sunColor * diff * diffuseColor;
     vec3 specular = sunColor * spec * specularColor;

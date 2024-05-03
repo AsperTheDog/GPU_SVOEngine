@@ -74,6 +74,7 @@ struct Collision
 struct Ray
 {
     vec3 origin;
+    vec3 direction;
     vec3 invDirection;
 #ifdef INTERSECTION_TEST
     float testTint;
@@ -85,6 +86,7 @@ struct StackElem
     uint index;
     vec3 pos;
     uint childCount;
+    uint intersectionMask;
 };
 
 vec3 homogenize(vec4 p)
@@ -122,18 +124,6 @@ LeafNode parseLeaf(uint node1, uint node2)
 	return n;
 }
 
-bool intersect(Ray ray, vec3 boxMin, vec3 boxMax)
-{
-    vec3 tm = (boxMin - ray.origin) * ray.invDirection;
-    vec3 tM = (boxMax - ray.origin) * ray.invDirection;
-	
-    float tmin = max(max(min(tm.x, tM.x), min(tm.y, tM.y)), min(tm.z, tM.z));
-    float tmax = min(min(max(tm.x, tM.x), max(tm.y, tM.y)), max(tm.z, tM.z));
-
-    float finalT = tmin <= 0 ? tmax : tmin;
-    return tmax >= tmin && finalT > 0;
-}
-
 uint getNextChild(inout StackElem stackElem, uint octant)
 {
     BranchNode node = parseBranch(octree[stackElem.index]);
@@ -141,7 +131,7 @@ uint getNextChild(inout StackElem stackElem, uint octant)
     while (stackElem.childCount < 8)
     {
         uint next = stackElem.childCount ^ octant;
-        if ((node.childMask & (1 << next)) != 0) return next;
+        if ((node.childMask & (1 << next)) != 0 && (stackElem.intersectionMask & (1 << next)) != 0) return next;
         stackElem.childCount++;
     }
     return 8;
@@ -161,14 +151,50 @@ uint getMemoryPosOfChild(BranchNode node, uint child)
     return count;
 }
 
+uint createIntersectionMask(Ray ray, vec3 boxMin, vec3 boxMax)
+{
+    float nodeRadius = (boxMax.x - boxMin.x) / 2.0;
+    vec3 nodeCenter = boxMin + nodeRadius;
+
+    vec3 tMid = (nodeCenter - ray.origin) * ray.invDirection;
+
+    vec3 slabRadius = nodeRadius * abs(ray.invDirection);
+    vec3 tMin = tMid - slabRadius;
+    float rayTMin = max(max(max(tMin.x, tMin.y), tMin.z), 0.0);
+    vec3 tMax = tMid + slabRadius;
+    float rayTMax = min(min(tMax.x, tMax.y), tMax.z);
+
+    uint intersectionMask = 0;
+    uint firstChildHit;
+    vec3 pointOnRay = ray.origin + 0.5 * (rayTMin + rayTMax) * ray.direction;
+	firstChildHit = pointOnRay.x >= nodeCenter.x ? 4 : 0;
+	firstChildHit += pointOnRay.y >= nodeCenter.y ? 2 : 0;
+	firstChildHit += pointOnRay.z >= nodeCenter.z ? 1 : 0;
+    intersectionMask |= (1 << firstChildHit);
+
+    const float epsilon = 0.0001f;
+	vec3 pointOnRaySegment0 = ray.origin + tMid.x * ray.direction;
+	uint A = (abs(nodeCenter.y - pointOnRaySegment0.y) < epsilon) ? (0xCC | 0x33) : ((pointOnRaySegment0.y >= nodeCenter.y ? 0xCC : 0x33));
+	uint B = (abs(nodeCenter.z - pointOnRaySegment0.z) < epsilon) ? (0xAA | 0x55) : ((pointOnRaySegment0.z >= nodeCenter.z ? 0xAA : 0x55));
+	intersectionMask |= (tMid.x < rayTMin || tMid.x > rayTMax) ? 0 : (A & B);
+	vec3 pointOnRaySegment1 = ray.origin + tMid.y * ray.direction;
+	uint C = (abs(nodeCenter.x - pointOnRaySegment1.x) < epsilon) ? (0xF0 | 0x0F) : ((pointOnRaySegment1.x >= nodeCenter.x ? 0xF0 : 0x0F));
+	uint D = (abs(nodeCenter.z - pointOnRaySegment1.z) < epsilon) ? (0xAA | 0x55) : ((pointOnRaySegment1.z >= nodeCenter.z ? 0xAA : 0x55));
+	intersectionMask |= (tMid.y < rayTMin || tMid.y > rayTMax) ? 0 : (C & D);
+	vec3 pointOnRaySegment2 = ray.origin + tMid.z * ray.direction;
+	uint E = (abs(nodeCenter.x - pointOnRaySegment2.x) < epsilon) ? (0xF0 | 0x0F) : ((pointOnRaySegment2.x >= nodeCenter.x ? 0xF0 : 0x0F));
+	uint F = (abs(nodeCenter.y - pointOnRaySegment2.y) < epsilon) ? (0xCC | 0x33) : ((pointOnRaySegment2.y >= nodeCenter.y ? 0xCC : 0x33));
+	intersectionMask |= (tMid.z < rayTMin || tMid.z > rayTMax) ? 0 : (E & F);
+
+    return intersectionMask;
+}
+
 Collision traceRay(inout Ray ray, uint octant)
 {
     float halfScale = octreeScale / 2.0;
     StackElem[20] stack;
-    stack[0] = StackElem(0, vec3(-halfScale), 0);
+    stack[0] = StackElem(0, vec3(-halfScale), 0, createIntersectionMask(ray, vec3(-halfScale), vec3(halfScale)));
     int stackPtr = 0;
-
-    if (!intersect(ray, vec3(-halfScale), vec3(halfScale))) return NULL_COLLISION;
 
     while (true)
     {
@@ -187,31 +213,32 @@ Collision traceRay(inout Ray ray, uint octant)
 #ifdef INTERSECTION_TEST
         ray.testTint += 0.0025;
 #endif
-        if (intersect(ray, pos, pos + vec3(size)))
+        BranchNode parent = parseBranch(octree[stack[stackPtr].index]);
+        uint absAddress = stack[stackPtr].index + parent.address;
+        uint trueAddress = parent.farFlag == 0 ? absAddress : absAddress + octree[absAddress];
+        uint nextAddress = trueAddress + getMemoryPosOfChild(parent, current);
+        if ((parent.leafMask & (1 << current)) != 0)
         {
-            BranchNode parent = parseBranch(octree[stack[stackPtr].index]);
-            uint absAddress = stack[stackPtr].index + parent.address;
-            uint trueAddress = parent.farFlag == 0 ? absAddress : absAddress + octree[absAddress];
-            uint nextAddress = trueAddress + getMemoryPosOfChild(parent, current);
-            if ((parent.leafMask & (1 << current)) != 0)
-            {
-                return Collision(true, nextAddress, pos + vec3(size) / 2.0);
-            }
-            else
-            {
-                // PUSH
-                stackPtr++;
-                stack[stackPtr] = StackElem(nextAddress, pos, 0);
-                continue;
-            }
+            return Collision(true, nextAddress, pos + vec3(size) / 2.0);
         }
         else
         {
-            // ADVANCE
-            stack[stackPtr].childCount++;
+            // PUSH
+            stackPtr++;
+            stack[stackPtr] = StackElem(nextAddress, pos, 0, createIntersectionMask(ray, pos, pos + vec3(size)));
+            continue;
         }
     }
     return NULL_COLLISION;
+}
+
+uint getOctant(vec3 direction)
+{
+    uint octant = 0;
+    if (direction.x < 0) octant |= 4;
+    if (direction.y < 0) octant |= 2;
+    if (direction.z < 0) octant |= 1;
+    return octant;
 }
 
 //*********************
@@ -247,16 +274,12 @@ vec3 calculateLighting(Collision coll)
     float amb = 0.1;
     vec3 ambient = sunColor * amb * ambientColor;
 
-#ifdef NO_SHADOW
+#ifndef NO_SHADOW
     Ray shadowRay;
-    vec3 shadowDir = normalize(sunDirection);
+    shadowRay.direction = normalize(sunDirection);
     shadowRay.origin = coll.voxelPos + VOXEL_SIZE * octreeScale * voxel.normal;
-    shadowRay.invDirection = 1.0 / shadowDir;
-    uint octant = 0;
-    if (shadowDir.x < 0) octant |= 4;
-    if (shadowDir.y < 0) octant |= 2;
-    if (shadowDir.z < 0) octant |= 1;
-    if (traceRay(shadowRay, octant).hit)
+    shadowRay.invDirection = 1.0 / shadowRay.direction;
+    if (traceRay(shadowRay, getOctant(shadowRay.direction)).hit)
     {
         return ambient;
     }
@@ -288,18 +311,13 @@ vec3 calculateLighting(Collision coll)
 void main() {
     Ray ray;
     ray.origin = camPos.xyz;
-    vec3 direction = normalize(homogenize(invPVMatrix * vec4(fragScreenCoord, 1.0, 1.0)) - ray.origin);
-    ray.invDirection = 1.0 / direction;
+    ray.direction = normalize(homogenize(invPVMatrix * vec4(fragScreenCoord, 1.0, 1.0)) - ray.origin);
+    ray.invDirection = 1.0 / ray.direction;
 #ifdef INTERSECTION_TEST
     ray.testTint = 0.0;
 #endif
 
-    uint octant = 0;
-    if (direction.x < 0) octant |= 4;
-    if (direction.y < 0) octant |= 2;
-    if (direction.z < 0) octant |= 1;
-
-    Collision coll = traceRay(ray, octant);
+    Collision coll = traceRay(ray, getOctant(ray.direction));
 
     if (coll.hit)
     {

@@ -84,7 +84,7 @@ Engine::Engine(const uint32_t samplerImageCount, const uint8_t depth) : cam({ 0,
 
     m_depth = depth;
     m_voxelSize = std::sqrt(2.0f) * (1.0f / static_cast<float>(1 << m_depth)) / 2.0f;
-    m_samplerImageCount = samplerImageCount;
+    m_samplerImageCount = std::max(samplerImageCount, 1U);
 
     createRenderPass();
     Engine::updatePipelines();

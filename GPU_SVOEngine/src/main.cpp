@@ -19,9 +19,9 @@ bool saveFlag = false;
 // Values to use when executing from IDE
 std::string loadPath = "assets/octree.bin";
 std::string savePath = "assets/octree.bin";
-std::string modelPath = "assets/Interior/interior.obj";
-uint8_t depth = 11;
-bool loadFlag = true;
+std::string modelPath = "assets/sponza/sponza.obj";
+uint8_t depth = 12;
+bool loadFlag = false;
 bool voxelizeFlag = !loadFlag;
 bool saveFlag = true;
 #endif

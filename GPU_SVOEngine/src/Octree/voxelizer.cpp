@@ -105,14 +105,17 @@ Voxelizer::Voxelizer(std::string filename, uint8_t maxDepth)
         }
     }
 
-    m_triangleTree.resize(maxDepth);
+    for (TriangleTree& tree : m_triangleTrees)
+    {
+        tree.branchTriangles.resize(maxDepth - 1);
+    }
 
     for (uint32_t i = 0; i < m_model.meshes.size(); i++)
     {
         for (uint32_t j = 0; j < m_model.meshes[i].indices.size(); j += 3)
         {
             m_triangles.emplace_back(i, j);
-            m_triangleTree[0].emplace_back(m_triangles.size() - 1);
+            m_rootTriangles.emplace_back(m_triangles.size() - 1);
         }
     }
     m_triangles.shrink_to_fit();
@@ -127,12 +130,12 @@ Octree::Material Material::toOctreeMaterial() const
     mat.specularComp = specularComp;
     return mat;
 }
-void Voxelizer::sampleVoxel(NodeRef& node) const
+void Voxelizer::sampleVoxel(NodeRef& node, uint8_t parallelIndex) const
 {
     LeafNode leafNode{ 0 };
     TriangleLeafIndex closestLeaf{};
     closestLeaf.d = FLT_MAX;
-    for (const TriangleLeafIndex& triangle : m_triangleLeaves)
+    for (const TriangleLeafIndex& triangle : m_triangleTrees[parallelIndex].leafTriangles)
     {
         if (triangle.d < closestLeaf.d)
         {
@@ -308,31 +311,32 @@ bool Voxelizer::intersectAABBPoint(const glm::vec3 point, const AABB shape)
     return glm::abs(point.x - shape.center.x) < shape.halfSize && glm::abs(point.y - shape.center.y) < shape.halfSize && glm::abs(point.z - shape.center.z) < shape.halfSize;
 }
 
-bool Voxelizer::doesAABBInteresect(const AABB& shape, const bool isLeaf, const uint8_t depth)
+bool Voxelizer::doesAABBInteresect(const AABB& shape, const bool isLeaf, const uint8_t depth, const uint8_t parallelIndex)
 {
     if (depth == 0) return true;
 
-    if (!isLeaf) m_triangleTree[depth].clear();
-    else m_triangleLeaves.clear();
+    const std::vector<uint32_t>& parentRef = depth - 1 == 0 ? m_rootTriangles : m_triangleTrees[parallelIndex].branchTriangles[depth - 2];
+    if (!isLeaf) m_triangleTrees[parallelIndex].branchTriangles[depth - 1].clear();
+    else m_triangleTrees[parallelIndex].leafTriangles.clear();
 
-    for (const uint32_t triangle : m_triangleTree[depth - 1])
+    for (const uint32_t triangle : parentRef)
     {
         std::array<glm::vec3, 3> tri = getTrianglePos(triangle);
         if (isLeaf)
         {
             const TriangleLeafIndex result = AABBTriangle6Connect(triangle, shape);
             if (!result.hit) continue;
-            m_triangleLeaves.push_back(result);
+            m_triangleTrees[parallelIndex].leafTriangles.push_back(result);
         }
         else
         {
             if (!intersectAABBTriangleSAT(tri[0], tri[1], tri[2], shape)) continue;
-            m_triangleTree[depth].push_back(triangle);
+            m_triangleTrees[parallelIndex].branchTriangles[depth - 1].push_back(triangle);
         }
     }
     if (isLeaf)
-        return !m_triangleLeaves.empty();
-    return !m_triangleTree[depth].empty();
+        return !m_triangleTrees[parallelIndex].leafTriangles.empty();
+    return !m_triangleTrees[parallelIndex].branchTriangles[depth - 1].empty();
 }
 
 // VOXELIZATION GLOBAL FUNCTION
@@ -342,8 +346,29 @@ NodeRef Voxelizer::voxelize(const AABB& nodeShape, const uint8_t depth, const ui
     Voxelizer& voxelizer = *static_cast<Voxelizer*>(data);
     NodeRef nodeRef{};
     nodeRef.isLeaf = depth >= maxDepth;
-    nodeRef.exists = voxelizer.doesAABBInteresect(nodeShape, nodeRef.isLeaf, depth);
+    nodeRef.exists = voxelizer.doesAABBInteresect(nodeShape, nodeRef.isLeaf, depth, 0);
     if (nodeRef.exists && nodeRef.isLeaf)
-        voxelizer.sampleVoxel(nodeRef);
+        voxelizer.sampleVoxel(nodeRef, 0);
     return nodeRef;
+}
+
+NodeRef Voxelizer::parallelVoxelize(const AABB& nodeShape, const uint8_t depth, const uint8_t maxDepth, void* data, const uint8_t parallelIndex)
+{
+    Voxelizer& voxelizer = *static_cast<Voxelizer*>(data);
+    NodeRef nodeRef{};
+    nodeRef.isLeaf = depth >= maxDepth;
+    nodeRef.exists = voxelizer.doesAABBInteresect(nodeShape, nodeRef.isLeaf, depth, parallelIndex);
+    if (nodeRef.exists && nodeRef.isLeaf)
+        voxelizer.sampleVoxel(nodeRef, parallelIndex);
+    return nodeRef;
+}
+
+void Voxelizer::resetOctreeData(const uint8_t newDepth)
+{
+    for (TriangleTree& tree : m_triangleTrees)
+    {
+        tree.branchTriangles.clear();
+        tree.branchTriangles.resize(newDepth - 1);
+        tree.leafTriangles.clear();
+    }
 }

@@ -105,7 +105,7 @@ void Octree::generate(const AABB root, const ProcessFunc func, void* processData
     m_reversed = true;
     m_process = func;
     const std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
-    populate(root, processData);
+    populate(root, processData, false, 0);
     const std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
     m_stats.constructionTime = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) / 1000.f;
 
@@ -117,39 +117,160 @@ void Octree::generate(const AABB root, const ProcessFunc func, void* processData
     Logger::popContext();
 }
 
-NodeRef Octree::populateRec(const AABB nodeShape, const uint8_t currentDepth, void* processData)
+void Octree::generateParallel(const AABB rootShape, const ParallelProcessFunc func, void* processData)
 {
-    NodeRef ref = m_process(nodeShape, currentDepth, m_depth, processData);
-    if (!ref.exists || ref.isLeaf)
-        return ref;
+    Logger::pushContext("Octree parallel generation");
 
-    BranchNode node{0};
+    const std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
 
-    // Recurse into children
-    std::array<NodeRef, 8> children;
-    for (int8_t i = 7; i >= 0; i--)
+    m_data.clear();
+    m_stats = Stats{};
+    m_loadedFromFile = false;
+    m_reversed = true;
+    m_parallelProcess = func;
+
+    // System does not work for octrees that are too shallow
+    // It doesn't make sense to parallelize in these cases anyway
+    if (m_depth < 2) 
     {
-        AABB childShape = nodeShape;
-        childShape.halfSize *= 0.5f;
-        childShape.center += childPositions[i] * childShape.halfSize;
-        children[i] = populateRec(childShape, currentDepth + 1, processData);
-        if (currentDepth == 0)
-            Logger::print("Finished processing root child " + std::to_string(i), Logger::INFO);
-
-        node.childMask.setBit(i, children[i].exists);
-        node.leafMask.setBit(i, children[i].isLeaf);
+        populate(rootShape, processData, true, 0);
+        const std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
+        m_stats.constructionTime = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) / 1000.f;
+        Logger::popContext();
+        Logger::setThreadSafe(false);
+        return;
     }
-    if (node.childMask.toRaw() == 0)
+
+    std::array<NodeRef, 8> childRefs{};
+
+    NodeRef ref;
+    BranchNode root{0};
+    
+    {
+        const uint8_t childDepth = m_depth - 1;
+        std::array<Octree, 8> children = {
+            Octree{childDepth}, Octree{childDepth}, Octree{childDepth}, Octree{childDepth},
+            Octree{childDepth}, Octree{childDepth}, Octree{childDepth}, Octree{childDepth}
+        };
+    
+#ifndef _DEBUG
+        Logger::setThreadSafe(true);
+        #pragma omp parallel for
+#endif
+        for (int i = 0; i < 8; i++)
+        {
+            AABB childShape = rootShape;
+            childShape.halfSize *= 0.5f;
+            childShape.center += childPositions[i] * childShape.halfSize;
+            children[i].m_parallelProcess = func;
+            children[i].populate(childShape, processData, true, i);
+
+            childRefs[i].exists = children[i].getSize() != 0;
+            if (!childRefs[i].exists) 
+                continue;
+#ifdef DEBUG_STRUCTURE
+            childRefs[i].data1 = children[i].m_data[children[i].getSize() - 1].pack(BRANCH_NODE);
+#else
+            childRefs[i].data1 = children[i].m_data[children[i].getSize() - 1];
+#endif
+            childRefs[i].isLeaf = false;
+            children[i].m_data.resize(children[i].getSize() - 1);
+            Logger::print("(parallel) Finished processing child " + std::to_string(i), Logger::INFO);
+        }
+        Logger::setThreadSafe(false);
+        
+        Logger::print("(parallel) Merging octrees...", Logger::INFO);
+
+        //Calculate total octree size
+        size_t totalSize = 0;
+        for (int i = 0; i < 8; i++)
+        {
+            if (!childRefs[i].exists)
+                continue;
+            totalSize += children[i].getSize();
+        }
+        // Add space for children, possible far nodes and root
+        totalSize += 8 * 2 + 1;
+        m_data.reserve(totalSize);
+
+        for (int8_t i = 7; i >= 0; i--)
+        {
+            if (!childRefs[i].exists) 
+                continue;
+
+            root.childMask.setBit(i, true);
+            const uint32_t offset = getSize();
+            m_data.resize(offset + children[i].getSize());
+            memcpy(m_data.data() + offset, children[i].getData(), children[i].getByteSize());
+            childRefs[i].childPos = offset + children[i].getSize() - 1;
+            m_stats.voxels += children[i].getStats().voxels;
+            m_stats.farPtrs += children[i].getStats().farPtrs;
+        }
+    }
+
+    if (root.childMask.toRaw() == 0) 
     {
         ref.exists = false;
-        return ref;
+    }
+    else
+    {
+        ref.exists = true;
+        resolveFarPointersAndPush(childRefs);
+
+        // Resolve position and return
+        uint8_t firstChild = 9;
+        for (uint8_t i = 0; i < 8; i++)
+        {
+            if (childRefs[i].exists)
+            {
+                firstChild = std::min(firstChild, i);
+                break;
+            }
+        }
+        ref.childPos = childRefs[firstChild].pos;
+        ref.data1 = root.toRaw();
     }
 
-    // Prepare addresses and far pointers
+    resolveRoot(ref);
+
+    const std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
+    m_stats.constructionTime = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) / 1000.f;
+
+    Logger::popContext();
+}
+
+void Octree::resolveRoot(const NodeRef& ref)
+{
+    if (!ref.exists)
+    {
+        Logger::print("Octree generation returned non-existent root. Resulting octree is empty or broken", Logger::WARN);
+        return;
+    }
+    if (ref.isLeaf)
+    {
+        addNode(LeafNode2(ref.data2));
+        addNode(LeafNode1(ref.data1));
+    }
+    else
+    {
+        BranchNode node{ref.data1};
+        uint32_t childPtr = getSize() - ref.childPos;
+        if (getSize() - ref.childPos > NEAR_PTR_MAX)
+        {
+            addNode(FarNode(childPtr));
+            childPtr = ref.pos - getSize();
+        }
+        node.ptr = NearPtr(static_cast<uint16_t>(childPtr), false);
+        addNode(node);
+    }
+}
+
+void Octree::resolveFarPointersAndPush(std::array<NodeRef, 8>& children)
+{
     BitField farMaskOld{0};
     BitField farMask{0};
     uint8_t farCount = 0;
-    std::array<uint32_t, 8> addresses{};
+    std::array<uint32_t, 8> addresses;
     do
     {
         uint8_t validChildCount = 0;
@@ -201,6 +322,40 @@ NodeRef Octree::populateRec(const AABB nodeShape, const uint8_t currentDepth, vo
             addNode(child);
         }
     }
+}
+
+NodeRef Octree::populateRec(const AABB nodeShape, const uint8_t currentDepth, void* processData, const bool parallel, const uint8_t parallelIndex)
+{
+    NodeRef ref;
+    if (parallel) ref = m_parallelProcess(nodeShape, currentDepth, m_depth, processData, parallelIndex);
+    else ref = m_process(nodeShape, currentDepth, m_depth, processData);
+
+    if (!ref.exists || ref.isLeaf)
+        return ref;
+
+    BranchNode node{0};
+
+    // Recurse into children
+    std::array<NodeRef, 8> children;
+    for (int8_t i = 7; i >= 0; i--)
+    {
+        AABB childShape = nodeShape;
+        childShape.halfSize *= 0.5f;
+        childShape.center += childPositions[i] * childShape.halfSize;
+        children[i] = populateRec(childShape, currentDepth + 1, processData, parallel, parallelIndex);
+        if (currentDepth == 0 && !parallel)
+            Logger::print("Finished processing root child " + std::to_string(i), Logger::INFO);
+
+        node.childMask.setBit(i, children[i].exists);
+        node.leafMask.setBit(i, children[i].isLeaf);
+    }
+    if (node.childMask.toRaw() == 0)
+    {
+        ref.exists = false;
+        return ref;
+    }
+
+    resolveFarPointersAndPush(children);
 
     // Resolve position and return
     uint8_t firstChild = 9;
@@ -214,6 +369,7 @@ NodeRef Octree::populateRec(const AABB nodeShape, const uint8_t currentDepth, vo
     }
     ref.childPos = children[firstChild].pos;
     ref.data1 = node.toRaw();
+
     return ref;
 }
 
@@ -476,31 +632,10 @@ bool Octree::isFinished() const
     return m_finished;
 }
 
-void Octree::populate(const AABB nodeShape, void* processData)
+void Octree::populate(const AABB nodeShape, void* processData, const bool parallel, const uint8_t parallelIndex)
 {
-    const NodeRef ref = populateRec(nodeShape, 0, processData);
-    if (!ref.exists)
-    {
-        Logger::print("Octree generation returned non-existent root. Resulting octree is empty or broken", Logger::WARN);
-        return;
-    }
-    if (ref.isLeaf)
-    {
-        addNode(LeafNode2(ref.data2));
-        addNode(LeafNode1(ref.data1));
-    }
-    else
-    {
-        BranchNode node{ref.data1};
-        uint32_t childPtr = getSize() - ref.childPos;
-        if (getSize() - ref.childPos > NEAR_PTR_MAX)
-        {
-            addNode(FarNode(childPtr));
-            childPtr = ref.pos - getSize();
-        }
-        node.ptr = NearPtr(static_cast<uint16_t>(childPtr), false);
-        addNode(node);
-    }
+    const NodeRef ref = populateRec(nodeShape, 0, processData, parallel, parallelIndex);
+    resolveRoot(ref);
 }
 
 #ifdef DEBUG_STRUCTURE

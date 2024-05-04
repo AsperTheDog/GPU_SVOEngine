@@ -35,6 +35,7 @@ struct FarNodeRef
 // Statistics data
 
 typedef NodeRef(*ProcessFunc)(const AABB&, uint8_t, uint8_t, void*);
+typedef NodeRef(*ParallelProcessFunc)(const AABB&, uint8_t, uint8_t, void*, uint8_t);
 
 class Octree
 {
@@ -78,6 +79,7 @@ public:
 
     void preallocate(size_t size);
     void generate(AABB root, ProcessFunc func, void* processData);
+    void generateParallel(AABB rootShape, ParallelProcessFunc func, void* processData);
     void addNode(BranchNode child);
     void addNode(LeafNode child);
     void addNode(LeafNode1 child);
@@ -106,8 +108,11 @@ public:
 #endif
 
 private:
-    void populate(AABB nodeShape, void* processData);
-    NodeRef populateRec(AABB node, uint8_t currentDepth, void* processData);
+    void populate(AABB nodeShape, void* processData, bool parallel, uint8_t parallelIndex = 0);
+    NodeRef populateRec(AABB nodeShape, uint8_t currentDepth, void* processData, bool parallel, uint8_t parallelIndex);
+
+    void resolveFarPointersAndPush(std::array<NodeRef, 8>& children);
+    void resolveRoot(const NodeRef& ref);
 
 #ifdef DEBUG_STRUCTURE // global define in Debug configuration
     std::vector<DebugOctreeNode> m_data;
@@ -125,6 +130,7 @@ private:
     size_t m_sizePtr = 0;
     uint8_t m_depth = 0;
     ProcessFunc m_process = nullptr;
+    ParallelProcessFunc m_parallelProcess = nullptr;
     std::string m_dumpFile;
 
     bool m_reversed = false;

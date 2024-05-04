@@ -6,6 +6,8 @@
 
 //#define EXIT_ON_NO_ARGS
 
+#define PARALLEL_VOXELIZATION
+
 #ifdef EXIT_ON_NO_ARGS
 // Default values for release
 std::string loadPath = "assets/octree.bin";
@@ -23,7 +25,7 @@ std::string modelPath = "assets/sponza/sponza.obj";
 uint8_t depth = 12;
 bool loadFlag = false;
 bool voxelizeFlag = !loadFlag;
-bool saveFlag = true;
+bool saveFlag = false;
 #endif
 
 void printHelpAndExit()
@@ -132,7 +134,11 @@ int main(const int argc, char* argv[])
         else if (voxelizeFlag)
         {
             Voxelizer voxelizer{ modelPath, depth };
+#ifdef PARALLEL_VOXELIZATION
+            octree.generateParallel(voxelizer.getModelAABB(), Voxelizer::parallelVoxelize, &voxelizer);
+#else
             octree.generate(voxelizer.getModelAABB(), Voxelizer::voxelize, &voxelizer);
+#endif
             octree.setMaterialPath(voxelizer.getMaterialFilePath());
             for (const Material& mat : voxelizer.getMaterials())
                 octree.addMaterial(mat.toOctreeMaterial(), mat.diffuseMap, mat.normalMap, mat.specularMap);

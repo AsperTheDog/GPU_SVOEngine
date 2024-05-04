@@ -219,6 +219,15 @@ Collision traceRay(inout Ray ray, uint octant)
         uint nextAddress = trueAddress + getMemoryPosOfChild(parent, current);
         if ((parent.leafMask & (1 << current)) != 0)
         {
+            LeafNode voxel = parseLeaf(octree[nextAddress], octree[nextAddress + 1]);
+            float alpha = 1.0;
+            if (materials[voxel.material].diffuseMap < SAMPLER_ARRAY_SIZE) 
+                alpha = texture(tex[materials[voxel.material].diffuseMap], voxel.uv).a;
+            if (alpha < 0.5)
+            {
+                stack[stackPtr].childCount++;
+                continue;
+            }
             return Collision(true, nextAddress, pos + vec3(size) / 2.0);
         }
         else

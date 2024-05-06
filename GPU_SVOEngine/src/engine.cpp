@@ -391,6 +391,8 @@ uint32_t Engine::createGraphicsPipeline(const uint32_t samplerImageCount, const 
     }
 
     macros.push_back({"SAMPLER_ARRAY_SIZE", std::to_string(samplerImageCount)});
+    macros.push_back({"VOXEL_SIZE", std::to_string(m_voxelSize)});
+    macros.push_back({"OCTREE_DEPTH", std::to_string(m_depth)});
     const uint32_t vertexShaderID = device.createShader("shaders/raytracing.vert", VK_SHADER_STAGE_VERTEX_BIT, {});
     const uint32_t fragmentShaderID = device.createShader(fragmentShader, VK_SHADER_STAGE_FRAGMENT_BIT, macros);
 
@@ -644,19 +646,19 @@ void Engine::updatePipelines()
     try
     {
         uint32_t oldPipeline = m_pipelineID;
-        m_pipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"VOXEL_SIZE", std::to_string(m_voxelSize)}});
+        m_pipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {});
         if (oldPipeline != UINT32_MAX)
             device.freePipeline(oldPipeline);
         oldPipeline = m_noShadowPipelineID;
-        m_noShadowPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"NO_SHADOW", "true"}, {"VOXEL_SIZE", std::to_string(m_voxelSize)}});
+        m_noShadowPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"NO_SHADOW", "true"}});
         if (oldPipeline != UINT32_MAX)
             device.freePipeline(oldPipeline);
         oldPipeline = m_intersectPipelineID;
-        m_intersectPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}, {"VOXEL_SIZE", std::to_string(m_voxelSize)}});
+        m_intersectPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}});
         if (oldPipeline != UINT32_MAX)
             device.freePipeline(oldPipeline);
         oldPipeline = m_intersectColorPipelineID;
-        m_intersectColorPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}, {"INTERSECTION_COLOR", "true"}, {"VOXEL_SIZE", std::to_string(m_voxelSize)}});
+        m_intersectColorPipelineID = createGraphicsPipeline(m_samplerImageCount, "shaders/raytracing.frag", {{"INTERSECTION_TEST", "true"}, {"INTERSECTION_COLOR", "true"}});
         if (oldPipeline != UINT32_MAX)
             device.freePipeline(oldPipeline);
     }

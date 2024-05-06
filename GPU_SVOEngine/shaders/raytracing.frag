@@ -137,20 +137,6 @@ uint getNextChild(inout StackElem stackElem, uint octant)
     return 8;
 }
 
-uint getMemoryPosOfChild(BranchNode node, uint child)
-{
-    uint count = 0;
-    for (uint i = 0; i < child; i++)
-    {
-        if ((node.childMask & (1 << i)) != 0) 
-        {
-            if ((node.leafMask & (1 << i)) != 0) count += 2;
-            else count++;
-        }
-    }
-    return count;
-}
-
 uint createIntersectionMask(Ray ray, vec3 boxMin, vec3 boxMax)
 {
     float nodeRadius = (boxMax.x - boxMin.x) / 2.0;
@@ -192,7 +178,7 @@ uint createIntersectionMask(Ray ray, vec3 boxMin, vec3 boxMax)
 Collision traceRay(inout Ray ray, uint octant)
 {
     float halfScale = octreeScale / 2.0;
-    StackElem[20] stack;
+    StackElem[OCTREE_DEPTH] stack;
     stack[0] = StackElem(0, vec3(-halfScale), 0, createIntersectionMask(ray, vec3(-halfScale), vec3(halfScale)));
     int stackPtr = 0;
 
@@ -207,19 +193,23 @@ Collision traceRay(inout Ray ray, uint octant)
             stack[stackPtr].childCount++;
             continue;
         }
-        float size = pow(2.0, -(stackPtr + 1)) * octreeScale;
-        vec3 offset = vec3((current & 4) >> 2, (current & 2) >> 1, current & 1);
-        vec3 pos = stack[stackPtr].pos + size * offset;
 #ifdef INTERSECTION_TEST
         ray.testTint += 0.0025;
 #endif
         BranchNode parent = parseBranch(octree[stack[stackPtr].index]);
-        uint absAddress = stack[stackPtr].index + parent.address;
-        uint trueAddress = parent.farFlag == 0 ? absAddress : absAddress + octree[absAddress];
-        uint nextAddress = trueAddress + getMemoryPosOfChild(parent, current);
+        uint nextChild;
+        {
+            uint bitMask = (1 << current) - 1;
+            uint childOffset = bitCount(parent.childMask & bitMask) + bitCount(parent.leafMask & bitMask & parent.childMask);
+            uint nextAbsAddress = stack[stackPtr].index + parent.address;
+            uint resolvedAddress = parent.farFlag == 0 ? nextAbsAddress : nextAbsAddress + octree[nextAbsAddress];
+            nextChild = resolvedAddress + childOffset;
+        }
+        float size = pow(2.0, -(stackPtr + 1)) * octreeScale;
+        vec3 pos = stack[stackPtr].pos + size * vec3((current & 4) >> 2, (current & 2) >> 1, current & 1);
         if ((parent.leafMask & (1 << current)) != 0)
         {
-            LeafNode voxel = parseLeaf(octree[nextAddress], octree[nextAddress + 1]);
+            LeafNode voxel = parseLeaf(octree[nextChild], octree[nextChild + 1]);
             float alpha = 1.0;
             if (materials[voxel.material].diffuseMap < SAMPLER_ARRAY_SIZE) 
                 alpha = texture(tex[materials[voxel.material].diffuseMap], voxel.uv).a;
@@ -228,13 +218,13 @@ Collision traceRay(inout Ray ray, uint octant)
                 stack[stackPtr].childCount++;
                 continue;
             }
-            return Collision(true, nextAddress, pos + vec3(size) / 2.0);
+            return Collision(true, nextChild, pos + vec3(size) / 2.0);
         }
         else
         {
             // PUSH
             stackPtr++;
-            stack[stackPtr] = StackElem(nextAddress, pos, 0, createIntersectionMask(ray, pos, pos + vec3(size)));
+            stack[stackPtr] = StackElem(nextChild, pos, 0, createIntersectionMask(ray, pos, pos + vec3(size)));
             continue;
         }
     }

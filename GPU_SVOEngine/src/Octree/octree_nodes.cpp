@@ -34,6 +34,7 @@ LeafNode::LeafNode(const uint64_t raw)
 
 void LeafNode::setUV(glm::vec2 uv)
 {
+    // clamp uv to [0, 1]
     while (uv.x < 0.f) uv.x += 1.f;
     while (uv.y < 0.f) uv.y += 1.f;
     while (uv.x > 1.f) uv.x -= 1.f;

@@ -24,6 +24,7 @@ glm::vec3 Triangle::getWeightedNormal(const glm::vec3 weights) const
     return v0.normal * weights.x + v1.normal * weights.y + v2.normal * weights.z;
 }
 
+// The constructor loads the model data and materials from the file
 Voxelizer::Voxelizer(std::string filename, uint8_t maxDepth)
 {
     {
@@ -64,6 +65,8 @@ Voxelizer::Voxelizer(std::string filename, uint8_t maxDepth)
         {
             for (uint32_t i = 0; i < shape.mesh.indices.size(); i++)
             {
+                // If the material index is different from the previous one, we change the mesh
+                // We either create a new mesh or use the one that has the same material index
                 if (shape.mesh.material_ids[i / 3] + 1 != materialIndex)
                 {
                     materialIndex = shape.mesh.material_ids[i / 3] + 1;
@@ -130,6 +133,10 @@ Octree::Material Material::toOctreeMaterial() const
     mat.specularComp = specularComp;
     return mat;
 }
+
+// This function is used to obtain material, normal and UV data for the provided Node
+// The data is samples using the closest triangle intersect by the 6-connect test.
+// It samples taking the baricentric coordinates of the intersection point.
 void Voxelizer::sampleVoxel(NodeRef& node, uint8_t parallelIndex) const
 {
     LeafNode leafNode{ 0 };
@@ -142,6 +149,7 @@ void Voxelizer::sampleVoxel(NodeRef& node, uint8_t parallelIndex) const
             closestLeaf = triangle;
         }
     }
+    // Baricentric at x = 1 - y - z
     glm::vec3 weights{1.0f - closestLeaf.baricentric.x - closestLeaf.baricentric.y, closestLeaf.baricentric.x, closestLeaf.baricentric.y};
     Triangle closestT = getTriangle(m_triangles[closestLeaf.index]);
     leafNode.setMaterial(getMaterialID(closestLeaf.index));
@@ -152,6 +160,7 @@ void Voxelizer::sampleVoxel(NodeRef& node, uint8_t parallelIndex) const
     node.data2 = leaf2.toRaw();
 }
 
+// We want to get the smallest AABB that can contain the model
 AABB Voxelizer::getModelAABB() const
 {
     const float distX = std::abs(m_model.max.x - m_model.min.x);
@@ -230,7 +239,11 @@ glm::vec3 axisGroup[] = {
     {0, 0, 1}
 };
 
-::TriangleLeafIndex Voxelizer::AABBTriangle6Connect(const uint32_t index, const AABB shape) const
+// The 6-connect test is a test that will generate the smallest model without leaving holes
+// It simply tests three rays along each axis against the triangles. Then checks that the intersected point (if any) is inside the AABB
+// It is used for the leaves of the octree
+// It stores the closest positive triangle for sampling
+TriangleLeafIndex Voxelizer::AABBTriangle6Connect(const uint32_t index, const AABB shape) const
 {
     TriangleLeafIndex current{shape.halfSize, {}, false};
     for (auto& axis : axisGroup)
@@ -261,6 +274,10 @@ static bool AABBTriangleSAT(const glm::vec3 v0, const glm::vec3 v1, const glm::v
     return !(glm::max(-maxP, minP) > r * size);
 }
 
+// The separate axis theorem is used if a triangle is intersecting an AABB
+// https://gdbooks.gitbooks.io/3dcollisions/content/Chapter4/aabb-triangle.html
+// This test is positive if any part of the triangle is inside the AABB
+// It is used for the branches of the octree
 bool Voxelizer::intersectAABBTriangleSAT(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, const AABB shape)
 {
     v0 -= shape.center;
@@ -324,13 +341,17 @@ bool Voxelizer::doesAABBInteresect(const AABB& shape, const bool isLeaf, const u
         std::array<glm::vec3, 3> tri = getTrianglePos(triangle);
         if (isLeaf)
         {
+            // 6-connect test for leaves
             const TriangleLeafIndex result = AABBTriangle6Connect(triangle, shape);
             if (!result.hit) continue;
+            // We store the positives into a vector for sampling
             m_triangleTrees[parallelIndex].leafTriangles.push_back(result);
         }
         else
         {
+            // SAT test for branches
             if (!intersectAABBTriangleSAT(tri[0], tri[1], tri[2], shape)) continue;
+            // We store the positives into a vector for the children to test. That way we avoid testing all triangles at all levels
             m_triangleTrees[parallelIndex].branchTriangles[depth - 1].push_back(triangle);
         }
     }
@@ -341,15 +362,10 @@ bool Voxelizer::doesAABBInteresect(const AABB& shape, const bool isLeaf, const u
 
 // VOXELIZATION GLOBAL FUNCTION
 
+// We need a small function that wraps the parallel one since the octree asks for less arguments for the non parallel version
 NodeRef Voxelizer::voxelize(const AABB& nodeShape, const uint8_t depth, const uint8_t maxDepth, void* data)
 {
-    Voxelizer& voxelizer = *static_cast<Voxelizer*>(data);
-    NodeRef nodeRef{};
-    nodeRef.isLeaf = depth >= maxDepth;
-    nodeRef.exists = voxelizer.doesAABBInteresect(nodeShape, nodeRef.isLeaf, depth, 0);
-    if (nodeRef.exists && nodeRef.isLeaf)
-        voxelizer.sampleVoxel(nodeRef, 0);
-    return nodeRef;
+    Voxelizer::parallelVoxelize(nodeShape, depth,maxDepth, data, 0);
 }
 
 NodeRef Voxelizer::parallelVoxelize(const AABB& nodeShape, const uint8_t depth, const uint8_t maxDepth, void* data, const uint8_t parallelIndex)

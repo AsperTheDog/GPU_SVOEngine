@@ -133,24 +133,37 @@ int main(const int argc, char* argv[])
         }
         else if (voxelizeFlag)
         {
+            // The octree is kept independent from the voxelizer, because maybe you want to generate an octree
+            // that is not voxelizing a model, like a procedural octree or one that voxelizes a mathematical function
+            // The octree requests a function (ProcessFunc or ParallelProcessFunc) that will be called for each node.
+            // This function is supposed to say if a node exists or not given an AABB shape and other metadata.
+            // It is also responsible for setting the leaf data, if the node is a leaf.
+            // It also accepts a void pointer that can be used to pass data to the function.
             Voxelizer voxelizer{ modelPath, depth };
 #ifdef PARALLEL_VOXELIZATION
             octree.generateParallel(voxelizer.getModelAABB(), Voxelizer::parallelVoxelize, &voxelizer);
 #else
             octree.generate(voxelizer.getModelAABB(), Voxelizer::voxelize, &voxelizer);
 #endif
+            // Material data is stored separately in the octree, since voxels contain material IDs that point to the specific material
+            // Materials will also point to different images, the octree stores the paths and resolves the map IDs in the material
             octree.setMaterialPath(voxelizer.getMaterialFilePath());
             for (const Material& mat : voxelizer.getMaterials())
                 octree.addMaterial(mat.toOctreeMaterial(), mat.diffuseMap, mat.normalMap, mat.specularMap);
+            // Optionally, all octree data can be dumped. This is a very simple binary dump but it stores all necessary data and some statistics of the octree
             if (saveFlag)
                 octree.dump(savePath);
         }
-        
+
+        // Called to generate a possible sample material if none are provided (as safeguard) and to finalize some statistics
+        // This is not necessary, but it is recommended to call it before packing the octree
         octree.packAndFinish();
 
+        // The engine initializes all Vulkan resources using VkPlayground (https://github.com/AsperTheDog/VkPlayground)
         Engine engine{ static_cast<uint32_t>(octree.getMaterialTextures().size()), depth };
 
         Logger::setRootContext("Engine context init");
+        // Send the octree and textures to the GPU
         engine.configureOctreeBuffer(octree, 100.0f);
         engine.run();
 

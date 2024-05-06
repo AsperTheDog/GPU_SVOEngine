@@ -19,6 +19,10 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
+// Push constant data for the shaders
+// The alignment rules for the GPU are specified here (https://registry.khronos.org/OpenGL/extensions/ARB/ARB_uniform_buffer_object.txt)
+// Search for the word "alignment" and it will jump to the correct section
+// As a general tip: Floats and uints are aligned to 4 bytes. Vec3, vec4 and mat4 are aligned to 16 bytes
 struct PushConstantData
 {
     alignas(16) glm::vec3 camPos;
@@ -33,7 +37,9 @@ struct PushConstantData
     alignas(4) float gamma;
 };
 
-VulkanGPU chooseCorrectGPU()
+// Simple helper function to choose the correct GPU. Right now it just tries to look for a discrete GPU
+// It should also check for capabilities and limits but it's incredibly rare that a moderately modern discrete GPU doesn't support what we need
+static VulkanGPU chooseCorrectGPU()
 {
     const std::vector<VulkanGPU> gpus = VulkanContext::getGPUs();
     for (auto& gpu : gpus)
@@ -47,17 +53,23 @@ VulkanGPU chooseCorrectGPU()
     throw std::runtime_error("No discrete GPU found");
 }
 
+// The constructor will all Vulkan resources and initialize ImGui. Not much to see here
 Engine::Engine(const uint32_t samplerImageCount, const uint8_t depth) : cam({ 0, 0, 0 }, { 0, 0, 0 }), m_window("Vulkan", 1920, 1080)
 {
+    // Vulkan Instance
     Logger::setRootContext("Engine init");
 #ifndef _DEBUG
     VulkanContext::init(VK_API_VERSION_1_3, false, false, m_window.getRequiredVulkanExtensions());
 #else
     VulkanContext::init(VK_API_VERSION_1_3, true, false, m_window.getRequiredVulkanExtensions());
 #endif
+    // Vulkan Surface
     m_window.createSurface(VulkanContext::getHandle());
 
+    // Choose Physical Device
     const VulkanGPU gpu = chooseCorrectGPU();
+
+    // Select Queue Families
     const GPUQueueStructure queueStructure = gpu.getQueueFamilies();
     QueueFamilySelector queueFamilySelector(queueStructure);
 
@@ -73,12 +85,15 @@ Engine::Engine(const uint32_t samplerImageCount, const uint8_t depth) : cam({ 0,
     m_presentQueuePos = selector.getOrAddQueue(presentQueueFamily, 1.0);
     m_transferQueuePos = selector.addQueue(transferQueueFamily, 1.0);
 
+    // Logical Device
     m_deviceID = VulkanContext::createDevice(gpu, selector, { VK_KHR_SWAPCHAIN_EXTENSION_NAME }, {});
     VulkanDevice& device = VulkanContext::getDevice(m_deviceID);
 
+    // Swapchain
     m_swapchainID = device.createSwapchain(m_window.getSurface(), m_window.getSize().toExtent2D(), { VK_FORMAT_R8G8B8A8_SRGB, VK_COLORSPACE_SRGB_NONLINEAR_KHR });
     const VulkanSwapchain& swapchain = device.getSwapchain(m_swapchainID);
 
+    // Command Buffers
     device.configureOneTimeQueue(m_transferQueuePos);
     m_graphicsCmdBufferID = device.createCommandBuffer(graphicsQueueFamily, 0, false);
 
@@ -86,9 +101,11 @@ Engine::Engine(const uint32_t samplerImageCount, const uint8_t depth) : cam({ 0,
     m_voxelSize = std::sqrt(2.0f) * (1.0f / static_cast<float>(1 << m_depth)) / 2.0f;
     m_samplerImageCount = std::max(samplerImageCount, 1U);
 
+    // Renderpass and pipelines
     createRenderPass();
     Engine::updatePipelines();
 
+    // Framebuffers
     m_framebuffers.resize(swapchain.getImageCount());
     for (uint32_t i = 0; i < swapchain.getImageCount(); i++)
         m_framebuffers[i] = createFramebuffer(swapchain.getImageView(i), swapchain.getExtent());
@@ -118,11 +135,13 @@ Engine::~Engine()
     m_window.shutdownImgui();
     ImGui::DestroyContext();
 
+    // Swapchain must be destroyed before the window, since the window destroys the surface
     VulkanContext::getDevice(m_deviceID).freeSwapchain(m_swapchainID);
     m_window.free();
     VulkanContext::free();
 }
 
+// This function will configure the octree in the GPU. It will create the necessary buffers and images and update the descriptor set
 void Engine::configureOctreeBuffer(Octree& octree, const float scale)
 {
     m_octree = &octree;
@@ -130,6 +149,7 @@ void Engine::configureOctreeBuffer(Octree& octree, const float scale)
     if (octree.isFinished()) 
         octree.packAndFinish();
 
+    // Data transfer
     {
         if (m_octreeBuffer != UINT32_MAX)
         {
@@ -146,10 +166,11 @@ void Engine::configureOctreeBuffer(Octree& octree, const float scale)
             device.configureStagingBuffer(100LL * 1024 * 1024, m_transferQueuePos);
         }
         const VkDeviceSize stagingBufferSize = device.getStagingBufferSize();
-
+        
+        bool resized = false;
+        VkDeviceSize currentBufferSize = stagingBufferSize;
+        // Image upload
         {
-            VkDeviceSize currentBufferSize = stagingBufferSize;
-            bool resized = false;
             for (const std::string& imagePath : octree.getMaterialTextures())
             {
                 int texWidth, texHeight, texChannels;
@@ -160,7 +181,9 @@ void Engine::configureOctreeBuffer(Octree& octree, const float scale)
                 if (!pixels) {
                     throw std::runtime_error("failed to load texture image " + imagePath); 
                 }
-                
+
+                // The staging buffer is used to transfer the image data to the GPU
+                // We want to send it in one go, so we need to check if the image is too big for the current staging buffer
                 {
                     if (imageSize > currentBufferSize)
                     {
@@ -184,23 +207,30 @@ void Engine::configureOctreeBuffer(Octree& octree, const float scale)
                 image.transitionLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0);
 
                 VkSampler sampler = image.createSampler(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
-                m_octreeImagesMemUsage += image.getMemoryRequirements().size;
                 m_octreeImages.emplace_back(imageID, sampler);
-            }
-
-            if (resized)
-            {
-                device.freeStagingBuffer();
-                device.configureStagingBuffer(stagingBufferSize, m_transferQueuePos);
+                // We keep track of the memory usage of the images for stats
+                m_octreeImagesMemUsage += image.getMemoryRequirements().size;
             }
         }
 
-        m_octreeMatPadding = 16 - octree.getByteSize() % device.getGPU().getProperties().limits.minStorageBufferOffsetAlignment;
+        if (resized)
+        {
+            device.freeStagingBuffer();
+            device.configureStagingBuffer(stagingBufferSize, m_transferQueuePos);
+        }
+
+        // Octree data upload
+        // We first calculate the total size of the buffer, then we allocate it and copy the data
+        // To calculate the size we need to make sure the material buffer is aligned to the GPU requirements, otherwise data will not be read correctly
+        const VkDeviceSize alignment = device.getGPU().getProperties().limits.minStorageBufferOffsetAlignment;
+        m_octreeMatPadding = alignment - octree.getByteSize() % alignment;
         const VkDeviceSize bufferSize = octree.getByteSize() + m_octreeMatPadding + octree.getMaterialByteSize();
         m_octreeBuffer = device.createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
         device.getBuffer(m_octreeBuffer).allocateFromFlags({ VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, false });
         m_octreeBufferSize = device.getBuffer(m_octreeBuffer).getSize();
-        
+
+        // We copy the data in chunks to the staging buffer. If we wanted to send it all at once, we would need to allocate a buffer that is at least as big as the octree data
+        // That can be a lot, we can't afford to duplicate the memory usage like that. So we copy it little by little, offseting the pointer each time
         VkDeviceSize offset = 0;
         while (offset < octree.getByteSize())
         {
@@ -218,6 +248,8 @@ void Engine::configureOctreeBuffer(Octree& octree, const float scale)
             device.dumpStagingBuffer(m_octreeBuffer, nextSize, offset, 0);
             offset += nextSize;
         }
+
+        // Material data is copied in one go since it's small
         void* stagePtr = device.mapStagingBuffer(octree.getMaterialByteSize(), 0);
         memcpy(stagePtr, octree.getMaterialData(), octree.getMaterialByteSize());
         device.dumpStagingBuffer(m_octreeBuffer, octree.getMaterialByteSize(), octree.getByteSize() + m_octreeMatPadding, 0);
@@ -227,7 +259,8 @@ void Engine::configureOctreeBuffer(Octree& octree, const float scale)
             device.freeStagingBuffer();
         }
     }
-    
+
+    // Descriptor sets
     if (m_octreeDescrPool != UINT32_MAX)
     {
         device.freeDescriptorPool(m_octreeDescrPool);
@@ -240,6 +273,8 @@ void Engine::configureOctreeBuffer(Octree& octree, const float scale)
     m_octreeDescrSet = device.createDescriptorSet(m_octreeDescrPool, m_octreeDescrSetLayout);
 
     VkDescriptorBufferInfo bufferInfo[2];
+    // The buffer is split in two parts: the octree data and the material data. It is all kept in one buffer for performance
+    // but we send it to the GPU as two separate buffers
     bufferInfo[0].buffer = *device.getBuffer(m_octreeBuffer);
     bufferInfo[0].offset = 0;
     bufferInfo[0].range = octree.getByteSize();
@@ -256,6 +291,7 @@ void Engine::configureOctreeBuffer(Octree& octree, const float scale)
     writeDescriptorSets[0].descriptorCount = 2;
     writeDescriptorSets[0].pBufferInfo = bufferInfo;
 
+    // The images are sent as an image sampler array
     std::vector<VkDescriptorImageInfo> imageInfos;
     for (const auto& imageData : m_octreeImages)
     {
@@ -296,9 +332,11 @@ void Engine::run()
         Logger::setRootContext("Frame " + std::to_string(frameCounter));
         m_window.pollEvents();
 
+        // Sync
         inFlightFence.wait();
         inFlightFence.reset();
 
+        // Acquire
         const uint32_t nextImage = device.getSwapchain(m_swapchainID).acquireNextImage();
 
         if (nextImage == UINT32_MAX)
@@ -307,6 +345,7 @@ void Engine::run()
             continue;
         }
 
+        // ImGui
         ImGui_ImplVulkan_NewFrame();
         m_window.frameImgui();
         ImGui::NewFrame();
@@ -323,13 +362,16 @@ void Engine::run()
             continue;
         }
 
+        // Record
         recordCommandBuffer(m_framebuffers[nextImage], imguiDrawData);
 
+        // Submit
         graphicsBuffer.submit(graphicsQueue, { {device.getSwapchain(m_swapchainID).getImgSemaphore(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT} }, { m_renderFinishedSemaphoreID }, m_inFlightFenceID);
 
         ImGui::UpdatePlatformWindows();
         ImGui::RenderPlatformWindowsDefault();
 
+        // Present
         device.getSwapchain(m_swapchainID).present(m_presentQueuePos, { m_renderFinishedSemaphoreID });
 
         frameCounter++;
@@ -343,11 +385,14 @@ void Engine::createRenderPass()
 
     const VkFormat format = VulkanContext::getDevice(m_deviceID).getSwapchain(m_swapchainID).getFormat().format;
 
+    // We just have one color attachment, since the scene is raytraced we don't need depth data. The whole scene is rendered in one draw call
+    // Maybe support for several draw calls could be added in the future, in which case we would need a depth attachment, but for now it's not necessary
     const VkAttachmentDescription colorAttachment = VulkanRenderPassBuilder::createAttachment(format,
         VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_STORE,
         VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
     builder.addAttachment(colorAttachment);
 
+    // Naturally, we only have one subpass
     builder.addSubpass(VK_PIPELINE_BIND_POINT_GRAPHICS, { {COLOR, 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL} }, 0);
 
     m_renderPassID = VulkanContext::getDevice(m_deviceID).createRenderPass(builder, 0);
@@ -360,20 +405,25 @@ uint32_t Engine::createGraphicsPipeline(const uint32_t samplerImageCount, const 
 
     VulkanDevice& device = VulkanContext::getDevice(m_deviceID);
 
+    // This function may be called several times to update shaders, so we will want to reuse the descriptor set layout and pipeline layout
+    // TODO: We probably want to update image sampler array descriptor to support runtime octree updates
     if (m_octreeDescrSetLayout == UINT32_MAX)
     {
+        // octree buffer
         VkDescriptorSetLayoutBinding octreeBinding{};
         octreeBinding.binding = 0;
         octreeBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         octreeBinding.descriptorCount = 1;
         octreeBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+        // material buffer
         VkDescriptorSetLayoutBinding matBinding{};
         matBinding.binding = 1;
         matBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         matBinding.descriptorCount = 1;
         matBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+        // texture sampler array
         VkDescriptorSetLayoutBinding texBinding{};
         texBinding.binding = 2;
         texBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -382,7 +432,6 @@ uint32_t Engine::createGraphicsPipeline(const uint32_t samplerImageCount, const 
 
         m_octreeDescrSetLayout = device.createDescriptorSetLayout({ octreeBinding, matBinding, texBinding }, 0);
     }
-
     if (m_pipelineLayoutID)
     {
         std::vector<VkPushConstantRange> pushConstants{ 1 };
@@ -390,10 +439,13 @@ uint32_t Engine::createGraphicsPipeline(const uint32_t samplerImageCount, const 
         m_pipelineLayoutID = device.createPipelineLayout({ m_octreeDescrSetLayout }, pushConstants);
     }
 
+    // Shader creation
+    const uint32_t vertexShaderID = device.createShader("shaders/raytracing.vert", VK_SHADER_STAGE_VERTEX_BIT, {});
+    // These macros allow easy customization of the shader.
+    // For example, we can change the number of textures in the sampler array, which is needed at compilation time
     macros.push_back({"SAMPLER_ARRAY_SIZE", std::to_string(samplerImageCount)});
     macros.push_back({"VOXEL_SIZE", std::to_string(m_voxelSize)});
     macros.push_back({"OCTREE_DEPTH", std::to_string(m_depth)});
-    const uint32_t vertexShaderID = device.createShader("shaders/raytracing.vert", VK_SHADER_STAGE_VERTEX_BIT, {});
     const uint32_t fragmentShaderID = device.createShader(fragmentShader, VK_SHADER_STAGE_FRAGMENT_BIT, macros);
 
     VkPipelineColorBlendAttachmentState colorBlendAttachment{};
@@ -427,6 +479,7 @@ uint32_t Engine::createFramebuffer(const VkImageView colorAttachment, const VkEx
     return VulkanContext::getDevice(m_deviceID).createFramebuffer({ newExtent.width, newExtent.height, 1 }, VulkanContext::getDevice(m_deviceID).getRenderPass(m_renderPassID), attachments);
 }
 
+// https://github.com/ocornut/imgui/blob/docking/examples/example_sdl2_vulkan/main.cpp
 void Engine::initImgui() const
 {
     IMGUI_CHECKVERSION();
@@ -480,6 +533,8 @@ void Engine::initImgui() const
     ImGui_ImplVulkan_Init(&init_info);
 }
 
+// This function hooks the events from the window to the engine.
+// The camera uses signals from the VkPlayground library, they are a basic implementation of the observer pattern
 void Engine::setupInputEvents()
 {
     m_window.getMouseMovedSignal().connect(&cam, &Camera::mouseMoved);
@@ -487,6 +542,8 @@ void Engine::setupInputEvents()
     m_window.getKeyReleasedSignal().connect(&cam, &Camera::keyReleased);
     m_window.getEventsProcessedSignal().connect(&cam, &Camera::updateEvents);
     m_window.getMouseCaptureChangedSignal().connect(&cam, &Camera::setMouseCaptured);
+
+    // Rebuild swapchain resources when the window is resized
     m_window.getResizedSignal().connect([&](const VkExtent2D extent)
         {
             VulkanContext::getDevice(m_deviceID).waitIdle();
@@ -505,10 +562,11 @@ void Engine::setupInputEvents()
         });
 }
 
+// Record the commands to the command buffer. This function is called every frame
 void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_draw_data)
 {
     Logger::pushContext("Command buffer recording");
-    const VulkanSwapchain& swapchain = VulkanContext::getDevice(m_deviceID).getSwapchain(m_swapchainID);
+    const VkExtent2D& extent = VulkanContext::getDevice(m_deviceID).getSwapchain(m_swapchainID).getExtent();
 
     std::vector<VkClearValue> clearValues{ 2 };
     clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
@@ -517,14 +575,14 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
     VkViewport viewport;
     viewport.x = 0.0f;
     viewport.y = 0.0f;
-    viewport.width = static_cast<float>(swapchain.getExtent().width);
-    viewport.height = static_cast<float>(swapchain.getExtent().height);
+    viewport.width = static_cast<float>(extent.width);
+    viewport.height = static_cast<float>(extent.height);
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
 
     VkRect2D scissor;
     scissor.offset = { 0, 0 };
-    scissor.extent = swapchain.getExtent();
+    scissor.extent = extent;
 
     const uint32_t layout = VulkanContext::getDevice(m_deviceID).getPipeline(m_pipelineID).getLayout();
 
@@ -546,7 +604,7 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
     graphicsBuffer.reset();
     graphicsBuffer.beginRecording();
 
-    graphicsBuffer.cmdBeginRenderPass(m_renderPassID, framebufferID, swapchain.getExtent(), clearValues);
+    graphicsBuffer.cmdBeginRenderPass(m_renderPassID, framebufferID, extent, clearValues);
 
     graphicsBuffer.cmdBindDescriptorSet(VK_PIPELINE_BIND_POINT_GRAPHICS, layout, m_octreeDescrSet);
 
@@ -559,6 +617,7 @@ void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_
         graphicsBuffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, m_noShadowPipelineID);
     else
         graphicsBuffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineID);
+
     graphicsBuffer.cmdSetViewport(viewport);
     graphicsBuffer.cmdSetScissor(scissor);
 

@@ -8,6 +8,22 @@
 #include <string>
 #endif
 
+// Most structures are just helpers to create and manage the octree. The main types of nodes in the octree are:
+
+// BranchNode:
+// - Contains a NearPtr denoting the address of the children 15 bits are for the address and 1 bit is to know if it's pointer to the child or to a FarPtr
+// - Contains a BitField for the child mask. Each bit denotes if the corresponding child exists
+// - Contains a BitField for the leaf mask. Each bit denotes if the corresponding child is a leaf node
+
+// LeafNode:
+// - Contains 24 bits for the UV coordinates (12 bits for each axis)
+// - Contains 10 bits for the material index
+// - Contains 30 bits for the normal vector (10 bits for each axis)
+// Since the LeafNode is 64 bits it on serialization it is split into two 32 bit nodes (LeafNode1 and LeafNode2)
+
+// FarNode:
+// - All 32 bits of the node are for the address of the next node
+
 struct BranchNode
 {
     explicit BranchNode(uint32_t raw);
@@ -92,6 +108,8 @@ struct FarNode
     [[nodiscard]] uint32_t toRaw() const;
 };
 
+// Custom structure that "should" be equivalent to the uint32_t raw values used in release mode. Different compilers or configurations may break it
+// Mainly useful to watch debug variables more comfortably
 #ifdef DEBUG_STRUCTURE // global define in Debug configuration
 enum Type : uint8_t
 {

@@ -145,14 +145,17 @@ void Octree::generateParallel(const AABB rootShape, const ParallelProcessFunc fu
 
     NodeRef ref;
     BranchNode root{0};
-    
+
+    // Create 8 octrees, one for each child. They will all be created in parallel
+    // Each child octree will have a reference to the last node stored in childRefs
     {
         const uint8_t childDepth = m_depth - 1;
         std::array<Octree, 8> children = {
             Octree{childDepth}, Octree{childDepth}, Octree{childDepth}, Octree{childDepth},
             Octree{childDepth}, Octree{childDepth}, Octree{childDepth}, Octree{childDepth}
         };
-    
+
+        // Do not run the program in parallel when in debug mode
 #ifndef _DEBUG
         Logger::setThreadSafe(true);
         #pragma omp parallel for
@@ -163,6 +166,7 @@ void Octree::generateParallel(const AABB rootShape, const ParallelProcessFunc fu
             childShape.halfSize *= 0.5f;
             childShape.center += childPositions[i] * childShape.halfSize;
             children[i].m_parallelProcess = func;
+            // Populate each child
             children[i].populate(childShape, processData, true, i);
 
             childRefs[i].exists = children[i].getSize() != 0;
@@ -174,6 +178,7 @@ void Octree::generateParallel(const AABB rootShape, const ParallelProcessFunc fu
             childRefs[i].data1 = children[i].m_data[children[i].getSize() - 1];
 #endif
             childRefs[i].isLeaf = false;
+            // we remove the root, since it will be at the beginning of the final octree
             children[i].m_data.resize(children[i].getSize() - 1);
             Logger::print("(parallel) Finished processing child " + std::to_string(i), Logger::INFO);
         }
@@ -193,6 +198,8 @@ void Octree::generateParallel(const AABB rootShape, const ParallelProcessFunc fu
         totalSize += 8 * 2 + 1;
         m_data.reserve(totalSize);
 
+        // Merge the octrees into one in order
+        // For each child we store the address of the node that has to be referenced by the parent
         for (int8_t i = 7; i >= 0; i--)
         {
             if (!childRefs[i].exists) 
@@ -208,6 +215,7 @@ void Octree::generateParallel(const AABB rootShape, const ParallelProcessFunc fu
         }
     }
 
+    // Resolve the direct children and root
     if (root.childMask.toRaw() == 0) 
     {
         ref.exists = false;
@@ -217,7 +225,7 @@ void Octree::generateParallel(const AABB rootShape, const ParallelProcessFunc fu
         ref.exists = true;
         resolveFarPointersAndPush(childRefs);
 
-        // Resolve position and return
+        // We try to find the first valid child to get its position and store it in the root
         uint8_t firstChild = 9;
         for (uint8_t i = 0; i < 8; i++)
         {
@@ -265,12 +273,17 @@ void Octree::resolveRoot(const NodeRef& ref)
     }
 }
 
+// This function is responsible for seeing if any parent has references that are too big
+// If they do, it will push the references to the end of the octree and replace them with far pointers
+// It will also push the children to the end of the octree
 void Octree::resolveFarPointersAndPush(std::array<NodeRef, 8>& children)
 {
     BitField farMaskOld{0};
     BitField farMask{0};
     uint8_t farCount = 0;
     std::array<uint32_t, 8> addresses;
+    // Every time we push a far pointer, we also shift all the addresses of the other children, which means
+    // we have to check if the changes have caused any other child to have an address that is too big
     do
     {
         uint8_t validChildCount = 0;
@@ -324,9 +337,11 @@ void Octree::resolveFarPointersAndPush(std::array<NodeRef, 8>& children)
     }
 }
 
+// The main function for octree traversal.
 NodeRef Octree::populateRec(const AABB nodeShape, const uint8_t currentDepth, void* processData, const bool parallel, const uint8_t parallelIndex)
 {
     NodeRef ref;
+    // We first look if the branch node exists using the custom function given by the user
     if (parallel) ref = m_parallelProcess(nodeShape, currentDepth, m_depth, processData, parallelIndex);
     else ref = m_process(nodeShape, currentDepth, m_depth, processData);
 
@@ -479,6 +494,18 @@ void* Octree::getMaterialTexData()
     return m_materials.data();
 }
 
+// Structure of the file:
+// 1. metadata for the octree
+//  1. depth of the octree
+//  2. stats
+// 2. octree data
+//  1. octree nodes
+//  2. material data
+//    1. size of the material array
+//    2. materials
+//  3. material textures
+//    1. size of the material texture array
+//    2. material textures
 void Octree::dump(const std::string_view filenameArg) const
 {
     Logger::pushContext("Octree dumping");
@@ -581,6 +608,7 @@ void Octree::setMaterialPath(const std::string_view path)
     if (path.back() != '/') m_textureRootDir += '/';
 }
 
+// The function will add the material and resolve the texture ID, avoiding duplicating textures
 void Octree::addMaterial(Material material, const std::string_view diffuseMap, const std::string_view normalMap, const std::string_view specularMap)
 {
     std::string diffusePath = m_textureRootDir + diffuseMap.data();

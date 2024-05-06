@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 
+// Simple class to work with a uint16_t as 15 bit address with far flag
 class NearPtr
 {
 public:
@@ -19,6 +20,7 @@ private:
     uint16_t farFlag : 1;
 };
 
+// Simple class to abstract handling groups of 8 flags as independent bits
 class BitField
 {
 public:

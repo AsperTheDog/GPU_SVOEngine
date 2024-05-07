@@ -1,5 +1,5 @@
 # GPU_SVOEngine
-![image](https://github.com/AsperTheDog/GPU_SVOEngine/assets/45227294/b895e571-a170-43f3-8fa7-4a6416be0d2f)
+![image](https://github.com/AsperTheDog/GPU_SVOEngine/assets/45227294/b3308642-a0d2-464b-9fe3-332b17c10002)
 
 A reimplementation and improvement of the [Sparse Voxel Octree Engine](https://github.com/AsperTheDog/SVOEngine) I made long ago, but this time using the GPU via Vulkan.
 
@@ -21,20 +21,23 @@ The release also comes with a basic model called test_ico.obj for people to test
 
 The basic objective of this project is to be able to render a Sparse Voxel Octree (SVO) in real-time using the GPU. To create SVOs that look coherent I have created a voxelization algorithm that takes obj files and processes them to generate an SVO of them. Data about what normals and UVs these voxels should have are encoded into the SVO alongside material and texture data so that the visualizer can display it with color and basic lighting. The results are the following:
 
-![image](https://github.com/AsperTheDog/GPU_SVOEngine/assets/45227294/7587e117-08fb-4284-8757-0a0becf22235)
+![image](https://github.com/AsperTheDog/GPU_SVOEngine/assets/45227294/f6872af3-20e4-4786-bd6c-1f22bc1402e9)
 **Model:** San Miguel 2.0  
 **SVO Data:** 12 levels of depth (2048x2048x2048)
 
-![image](https://github.com/AsperTheDog/GPU_SVOEngine/assets/45227294/9593b1b5-2576-4e40-ad6c-af7219bbb4f9)
+![image](https://github.com/AsperTheDog/GPU_SVOEngine/assets/45227294/5dc5f87d-03f8-4bb3-b633-3ccd28127987)
+**Model:** Amazon Lumberyard Bistro  
+**SVO Data:** 12 levels of depth (2048x2048x2048)
+
+![image](https://github.com/AsperTheDog/GPU_SVOEngine/assets/45227294/800d9f56-4dd3-4113-b7b6-738d42c00eb5)
+**Model**: Erato  
+**SVO Data:** 14 levels of depth (4196x4196x4196)
+
+![image](https://github.com/AsperTheDog/GPU_SVOEngine/assets/45227294/1f51c7e2-b60d-4a89-9984-36554a208773)
 **Model:** Crytek Sponza  
 **SVO Data:** 12 levels of depth (2048x2048x2048)
 
-![image](https://github.com/AsperTheDog/GPU_SVOEngine/assets/45227294/4d2867d8-c26f-4f9f-9ec1-31d8e096ffa3)
-**Model**: Stanford Dragon  
-**SVO Data:** 14 levels of depth (4196x4196x4196)
-
-
-All models have been obtained from the [McGuire Computer Graphics Archive](https://casual-effects.com/data/)
+Models downloaded from Morgan McGuire's [Computer Graphics Archive](https://casual-effects.com/data)
 
 ## How it works
 The main reference for the data structure and ray traversal algorithm is [NVIDIA's Efficient Sparse Voxel Octrees research paper](https://research.nvidia.com/publication/2010-02_efficient-sparse-voxel-octrees). The implementation has been done in Vulkan using a fragment shader for the raytracer. The SVO is generated and sent to the GPU as a storage buffer. Images are also loaded into GPU memory for the shader to fetch.
@@ -64,29 +67,34 @@ This project assumes that the Vulkan SDK is installed and that its path is writt
 When running it from Visual Studio make sure the macro EXIT_ON_NO_ARGS is not defined. Defining this macro will close the program immediately if no command line arguments are provided. This is for releases only and the code will always have it commented in the repository.
 To comfortably configure the different options it is recommended to change the variable declarations at the beginning of the main.cpp file.
 ```cpp
-//Change these paths
+#ifdef EXIT_ON_NO_ARGS
+// Default values for release
 std::string loadPath = "assets/octree.bin";
 std::string savePath = "assets/octree.bin";
 std::string modelPath = "assets/test_ico.obj";
-#ifdef EXIT_ON_NO_ARGS
 uint8_t depth = 11;
 bool loadFlag = false;
 bool voxelizeFlag = false;
 bool saveFlag = false;
 #else
-// Change these variables
-uint8_t depth = 11;
+// Values to use when executing from IDE. Change these paths
+std::string loadPath = "assets/octree.bin";
+std::string savePath = "assets/octree.bin";
+std::string modelPath = "assets/sponza/sponza.obj";
+uint8_t depth = 12;
 bool loadFlag = false;
-bool voxelizeFlag = true;
+bool voxelizeFlag = !loadFlag;
 bool saveFlag = false;
 #endif
+
 ```
 
 ## Future plans
-- Parallelization of the octree construction. The algorithm is made in a way that it should be very easy to parallelize into 8 different threads so I want to do it.
+- Transparency via alpha blend. Semitransparent voxels would be a very nice addition to the visualizer, specially for scenes like San Miguel 2.0.
 - Voxelization on the GPU. This is far and probably never happen, but I would like to try.
-- Improvement of the raytracing algorithm. The traversal algorithm right now is quite naive. I can greatly improve performance by extracting the next children to collide through the values of tmin and tmax returned by the intersection test formula (see [NVIDIA's paper](https://research.nvidia.com/publication/2010-02_efficient-sparse-voxel-octrees) section 4)-
-- Transparency via alpha threshold or blend. Transparent and maybe semitransparent voxels would be a very nice addition to the visualizer, specially for scenes like San Miguel 2.0.
+- More advanced lighting techniques like reflections or GI. I would first need the project to allow accumulating samples and improve performance so it remains responsive. Probably won't happen either.
+
+Truth is I am quite happy with the result. I may add some small things here and there but I doubt there will be any major changes to the project.
 
 ## Other
 

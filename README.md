@@ -23,19 +23,19 @@ The basic objective of this project is to be able to render a Sparse Voxel Octre
 
 ![image](https://github.com/AsperTheDog/GPU_SVOEngine/assets/45227294/f6872af3-20e4-4786-bd6c-1f22bc1402e9)
 **Model:** San Miguel 2.0  
-**SVO Data:** 12 levels of depth (2048x2048x2048)
+**SVO Data:** 12 levels of depth (4096x4096x4096)
 
 ![image](https://github.com/AsperTheDog/GPU_SVOEngine/assets/45227294/5dc5f87d-03f8-4bb3-b633-3ccd28127987)
 **Model:** Amazon Lumberyard Bistro  
-**SVO Data:** 12 levels of depth (2048x2048x2048)
+**SVO Data:** 12 levels of depth (4096x4096x4096)
 
 ![image](https://github.com/AsperTheDog/GPU_SVOEngine/assets/45227294/800d9f56-4dd3-4113-b7b6-738d42c00eb5)
 **Model**: Erato  
-**SVO Data:** 14 levels of depth (4196x4196x4196)
+**SVO Data:** 14 levels of depth (16384x16384x16384)
 
 ![image](https://github.com/AsperTheDog/GPU_SVOEngine/assets/45227294/1f51c7e2-b60d-4a89-9984-36554a208773)
 **Model:** Crytek Sponza  
-**SVO Data:** 12 levels of depth (2048x2048x2048)
+**SVO Data:** 12 levels of depth (4096x4096x4096)
 
 Models downloaded from Morgan McGuire's [Computer Graphics Archive](https://casual-effects.com/data)
 

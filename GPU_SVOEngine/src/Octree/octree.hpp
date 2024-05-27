@@ -102,11 +102,6 @@ public:
 
     void clear();
 
-#ifdef DEBUG_STRUCTURE // global define in Debug configuration
-    [[nodiscard]] std::string toString() const;
-    [[nodiscard]] Type getType(uint32_t index) const;
-#endif
-
 private:
     void populate(AABB nodeShape, void* processData, bool parallel, uint8_t parallelIndex = 0);
     NodeRef populateRec(AABB nodeShape, uint8_t currentDepth, void* processData, bool parallel, uint8_t parallelIndex);
@@ -114,14 +109,8 @@ private:
     void resolveFarPointersAndPush(std::array<NodeRef, 8>& children);
     void resolveRoot(const NodeRef& ref);
 
-#ifdef DEBUG_STRUCTURE // global define in Debug configuration
-    std::vector<DebugOctreeNode> m_data;
-    std::vector<Type> m_types;
-    [[nodiscard]] uint32_t get(uint32_t index) const;
-#else
     std::vector<uint32_t> m_data;
     uint32_t& get(uint32_t index);
-#endif
 
     std::vector<Material> m_materials;
     std::vector<std::string> m_materialTextures;

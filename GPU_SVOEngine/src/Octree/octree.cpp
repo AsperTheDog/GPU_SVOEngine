@@ -32,13 +32,9 @@ Octree::Octree(const uint8_t maxDepth, const std::string_view outputFile)
 
 }
 
-uint32_t Octree::getRaw(uint32_t index) const
+uint32_t Octree::getRaw(const uint32_t index) const
 {
-#ifdef DEBUG_STRUCTURE
-    return m_data[index].pack(m_types[index]);
-#else
     return m_data[index];
-#endif
 }
 
 Octree::Material& Octree::getMaterialProps(const uint32_t index)
@@ -156,10 +152,8 @@ void Octree::generateParallel(const AABB rootShape, const ParallelProcessFunc fu
         };
 
         // Do not run the program in parallel when in debug mode
-#ifndef _DEBUG
         Logger::setThreadSafe(true);
         #pragma omp parallel for
-#endif
         for (int i = 0; i < 8; i++)
         {
             AABB childShape = rootShape;
@@ -172,11 +166,7 @@ void Octree::generateParallel(const AABB rootShape, const ParallelProcessFunc fu
             childRefs[i].exists = children[i].getSize() != 0;
             if (!childRefs[i].exists) 
                 continue;
-#ifdef DEBUG_STRUCTURE
-            childRefs[i].data1 = children[i].m_data[children[i].getSize() - 1].pack(BRANCH_NODE);
-#else
             childRefs[i].data1 = children[i].m_data[children[i].getSize() - 1];
-#endif
             childRefs[i].isLeaf = false;
             // we remove the root, since it will be at the beginning of the final octree
             children[i].m_data.resize(children[i].getSize() - 1);
@@ -390,14 +380,7 @@ NodeRef Octree::populateRec(const AABB nodeShape, const uint8_t currentDepth, vo
 
 void Octree::addNode(const BranchNode child)
 {
-#ifdef DEBUG_STRUCTURE
-    DebugOctreeNode node;
-    node.data.branchNode = child;
-    m_data.push_back(node);
-    m_types.push_back(Type::BRANCH_NODE);
-#else
     m_data.push_back(child.toRaw());
-#endif
 }
 
 void Octree::addNode(const LeafNode child)
@@ -409,74 +392,37 @@ void Octree::addNode(const LeafNode child)
 
 void Octree::addNode(const LeafNode1 child)
 {
-#ifdef DEBUG_STRUCTURE
-    DebugOctreeNode node;
-    node.data.leafNode1 = child;
-    m_data.push_back(node);
-    m_types.push_back(Type::LEAF_NODE1);
-#else
     m_data.push_back(child.toRaw());
-#endif
 }
 
 void Octree::addNode(const LeafNode2 child)
 {
-#ifdef DEBUG_STRUCTURE
-    DebugOctreeNode node;
-    node.data.leafNode2 = child;
-    m_data.push_back(node);
-    m_types.push_back(Type::LEAF_NODE2);
-#else
     m_data.push_back(child.toRaw());
-#endif
 }
 
 void Octree::addNode(const FarNode child)
 {
-#ifdef DEBUG_STRUCTURE
-    DebugOctreeNode node;
-    node.data.farNode = child;
-    m_data.push_back(node);
-    m_types.push_back(Type::FAR_NODE);
-#else
     m_data.push_back(child.toRaw());
-#endif
 }
 
-void Octree::updateNode(uint32_t index, BranchNode node)
+void Octree::updateNode(const uint32_t index, const BranchNode node)
 {
-#ifdef DEBUG_STRUCTURE
-    m_data[index].update(node.toRaw(), Type::BRANCH_NODE);
-#else
     m_data[index] = node.toRaw();
-#endif
 }
 
-void Octree::updateNode(uint32_t index, LeafNode1 node)
+void Octree::updateNode(const uint32_t index, const LeafNode1 node)
 {
-#ifdef DEBUG_STRUCTURE
-    m_data[index].update(node.toRaw(), Type::LEAF_NODE1);
-#else
     m_data[index] = node.toRaw();
-#endif
 }
 
-void Octree::updateNode(uint32_t index, LeafNode2 node)
+void Octree::updateNode(const uint32_t index, const LeafNode2 node)
 {
-#ifdef DEBUG_STRUCTURE
-    m_data[index].update(node.toRaw(), Type::LEAF_NODE2);
-#else
     m_data[index] = node.toRaw();
-#endif
 }
 
-void Octree::updateNode(uint32_t index, FarNode node)
+void Octree::updateNode(const uint32_t index, const FarNode node)
 {
-#ifdef DEBUG_STRUCTURE
-    m_data[index].update(node.toRaw(), Type::FAR_NODE);
-#else
     m_data[index] = node.toRaw();
-#endif
 }
 
 void* Octree::getData()
@@ -530,19 +476,15 @@ void Octree::dump(const std::string_view filenameArg) const
     {
         for (uint32_t i = 1; i <= m_data.size(); i++)
         {
-#ifdef DEBUG_STRUCTURE
-            const uint32_t raw = m_data[getSize() - i].pack(m_types[getSize() - i]);
-#else
             const uint32_t raw = m_data[getSize() - i];
-#endif
             file.write(reinterpret_cast<const char*>(&raw), sizeof(raw));
         }
     }
     const size_t matSize = getMaterialSize();
     file.write(reinterpret_cast<const char*>(&matSize), sizeof(matSize));
     file.write(reinterpret_cast<const char*>(m_materials.data()), getMaterialByteSize());
-    const size_t texSize = m_materialTextures.size();
-    file.write(reinterpret_cast<const char*>(&texSize), sizeof(texSize));
+    const size_t texCount = m_materialTextures.size();
+    file.write(reinterpret_cast<const char*>(&texCount), sizeof(texCount));
     for (const std::string& texture : m_materialTextures)
     {
         const uint32_t texSize = static_cast<uint32_t>(texture.size());
@@ -666,42 +608,7 @@ void Octree::populate(const AABB nodeShape, void* processData, const bool parall
     resolveRoot(ref);
 }
 
-#ifdef DEBUG_STRUCTURE
-std::string Octree::toString() const
-{
-    std::stringstream ss{};
-    ss << "Octree structure:\n";
-    for (uint32_t i = 1; i <= m_data.size(); i++)
-    {
-        ss << m_data[getSize() - i].toString(i - 1, m_types[getSize() - i]) << '\n';
-    }
-    return ss.str();
-}
-
-Type Octree::getType(const uint32_t index) const
-{
-    return m_types[index];
-}
-
-uint32_t Octree::get(const uint32_t index) const
-{
-    const Type type = m_types[index];
-    switch (type)
-    {
-    case Type::BRANCH_NODE:
-        return m_data[index].data.branchNode.toRaw();
-    case Type::LEAF_NODE1:
-        return m_data[index].data.leafNode1.toRaw();
-    case Type::LEAF_NODE2:
-        return m_data[index].data.leafNode2.toRaw();
-    case Type::FAR_NODE:
-        return m_data[index].data.farNode.toRaw();
-}
-    return 0;
-}
-#else
 uint32_t& Octree::get(const uint32_t index)
 {
     return m_data[index];
 }
-#endif

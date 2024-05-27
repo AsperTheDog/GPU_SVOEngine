@@ -210,7 +210,7 @@ Collision traceRay(inout Ray ray, uint octant)
         if ((parent.leafMask & (1 << current)) != 0)
         {
             LeafNode voxel = parseLeaf(octree[nextChild], octree[nextChild + 1]);
-            if (materials[voxel.material].diffuseMap < SAMPLER_ARRAY_SIZE && texture(tex[materials[voxel.material].diffuseMap], voxel.uv).a >= 0.5)
+            if (materials[voxel.material].diffuseMap < SAMPLER_ARRAY_SIZE && texture(tex[materials[voxel.material].diffuseMap], voxel.uv).a >= 0.1)
                 return Collision(true, nextChild, pos + vec3(size) / 2.0);
             stack[stackPtr].childCount++;
             continue;

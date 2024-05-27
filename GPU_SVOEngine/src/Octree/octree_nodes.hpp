@@ -107,34 +107,3 @@ struct FarNode
 
     [[nodiscard]] uint32_t toRaw() const;
 };
-
-// Custom structure that "should" be equivalent to the uint32_t raw values used in release mode. Different compilers or configurations may break it
-// Mainly useful to watch debug variables more comfortably
-#ifdef DEBUG_STRUCTURE // global define in Debug configuration
-enum Type : uint8_t
-{
-    BRANCH_NODE = 0,
-    LEAF_NODE1 = 1,
-    LEAF_NODE2 = 2,
-    FAR_NODE = 3
-};
-
-struct DebugOctreeNode
-{
-    union Data
-    {
-        BranchNode branchNode;
-        LeafNode1 leafNode1;
-        LeafNode2 leafNode2;
-        FarNode farNode;
-
-        Data();
-    } data;
-
-    DebugOctreeNode() = default;
-    explicit DebugOctreeNode(Type type);
-    void update(uint32_t raw, Type type);
-    [[nodiscard]] uint32_t pack(Type type) const;
-    [[nodiscard]] std::string toString(uint32_t position, Type type) const;
-};
-#endif

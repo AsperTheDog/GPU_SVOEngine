@@ -365,7 +365,7 @@ bool Voxelizer::doesAABBInteresect(const AABB& shape, const bool isLeaf, const u
 // We need a small function that wraps the parallel one since the octree asks for less arguments for the non parallel version
 NodeRef Voxelizer::voxelize(const AABB& nodeShape, const uint8_t depth, const uint8_t maxDepth, void* data)
 {
-    Voxelizer::parallelVoxelize(nodeShape, depth,maxDepth, data, 0);
+    return Voxelizer::parallelVoxelize(nodeShape, depth,maxDepth, data, 0);
 }
 
 NodeRef Voxelizer::parallelVoxelize(const AABB& nodeShape, const uint8_t depth, const uint8_t maxDepth, void* data, const uint8_t parallelIndex)

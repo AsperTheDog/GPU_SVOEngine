@@ -104,7 +104,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;DEBUG_STRUCTURE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;$(ProjectDir)vendor\tinyobjloader;$(ProjectDir)vendor\stb;$(SolutionDir)ImGui\vendor\imgui;$(SolutionDir)VkPlayground\repo\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;$(ProjectDir)vendor\tinyobjloader;$(ProjectDir)vendor\stb;$(SolutionDir)ImGui\vendor\imgui;$(SolutionDir)VkPlayground\repo\include;$(SolutionDir)VkPlayground\repo\vendor\spirVReflect;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>stdafx.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp20</LanguageStandard>
@@ -125,7 +125,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;$(ProjectDir)vendor\tinyobjloader;$(ProjectDir)vendor\stb;$(SolutionDir)ImGui\vendor\imgui;$(SolutionDir)VkPlayground\repo\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;$(ProjectDir)vendor\tinyobjloader;$(ProjectDir)vendor\stb;$(SolutionDir)ImGui\vendor\imgui;$(SolutionDir)VkPlayground\repo\include;$(SolutionDir)VkPlayground\repo\vendor\spirVReflect;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>stdafx.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp20</LanguageStandard>

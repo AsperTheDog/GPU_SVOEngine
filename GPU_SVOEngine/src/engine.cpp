@@ -440,13 +440,13 @@ uint32_t Engine::createGraphicsPipeline(const uint32_t samplerImageCount, const 
     }
 
     // Shader creation
-    const uint32_t vertexShaderID = device.createShader("shaders/raytracing.vert", VK_SHADER_STAGE_VERTEX_BIT, {});
+    const uint32_t vertexShaderID = device.createShader("shaders/raytracing.vert", VK_SHADER_STAGE_VERTEX_BIT, false, {});
     // These macros allow easy customization of the shader.
     // For example, we can change the number of textures in the sampler array, which is needed at compilation time
     macros.push_back({"SAMPLER_ARRAY_SIZE", std::to_string(samplerImageCount)});
     macros.push_back({"VOXEL_SIZE", std::to_string(m_voxelSize)});
     macros.push_back({"OCTREE_DEPTH", std::to_string(m_depth)});
-    const uint32_t fragmentShaderID = device.createShader(fragmentShader, VK_SHADER_STAGE_FRAGMENT_BIT, macros);
+    const uint32_t fragmentShaderID = device.createShader(fragmentShader, VK_SHADER_STAGE_FRAGMENT_BIT, false, macros);
 
     VkPipelineColorBlendAttachmentState colorBlendAttachment{};
     colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;

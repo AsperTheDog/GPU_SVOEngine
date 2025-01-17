@@ -142,6 +142,13 @@
     </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="repo\include\ext\vulkan_acceleration_structure.hpp" />
+    <ClInclude Include="repo\include\ext\vulkan_deferred_host_operation.hpp" />
+    <ClInclude Include="repo\include\ext\vulkan_extension_management.hpp" />
+    <ClInclude Include="repo\include\ext\vulkan_raytracing.hpp" />
+    <ClInclude Include="repo\include\ext\vulkan_shader_clock.hpp" />
+    <ClInclude Include="repo\include\ext\vulkan_swapchain.hpp" />
+    <ClInclude Include="repo\include\utils\identifiable.hpp" />
     <ClInclude Include="repo\include\utils\logger.hpp" />
     <ClInclude Include="repo\include\utils\signal.hpp" />
     <ClInclude Include="repo\include\vulkan_binding.hpp" />
@@ -158,10 +165,16 @@
     <ClInclude Include="repo\include\vulkan_queues.hpp" />
     <ClInclude Include="repo\include\vulkan_render_pass.hpp" />
     <ClInclude Include="repo\include\vulkan_shader.hpp" />
-    <ClInclude Include="repo\include\vulkan_swapchain.hpp" />
     <ClInclude Include="repo\include\vulkan_sync.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="repo\src\ext\vulkan_acceleration_structure.cpp" />
+    <ClCompile Include="repo\src\ext\vulkan_deffered_host_operation.cpp" />
+    <ClCompile Include="repo\src\ext\vulkan_extension_management.cpp" />
+    <ClCompile Include="repo\src\ext\vulkan_raytracing.cpp" />
+    <ClCompile Include="repo\src\ext\vulkan_shader_clock.cpp" />
+    <ClCompile Include="repo\src\ext\vulkan_swapchain.cpp" />
+    <ClCompile Include="repo\src\logger.cpp" />
     <ClCompile Include="repo\src\vulkan_binding.cpp" />
     <ClCompile Include="repo\src\vulkan_buffer.cpp" />
     <ClCompile Include="repo\src\vulkan_command_buffer.cpp" />
@@ -176,7 +189,6 @@
     <ClCompile Include="repo\src\vulkan_queues.cpp" />
     <ClCompile Include="repo\src\vulkan_render_pass.cpp" />
     <ClCompile Include="repo\src\vulkan_shader.cpp" />
-    <ClCompile Include="repo\src\vulkan_swapchain.cpp" />
     <ClCompile Include="repo\src\vulkan_sync.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

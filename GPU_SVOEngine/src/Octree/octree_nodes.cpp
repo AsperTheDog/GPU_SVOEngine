@@ -1,5 +1,7 @@
 #include "octree_nodes.hpp"
 
+#include <algorithm>
+
 
 BranchNode::BranchNode(const uint32_t raw)
 {

@@ -1,3 +1,5 @@
+#include <iostream>
+
 #include "engine.hpp"
 #include "utils/logger.hpp"
 
@@ -21,7 +23,7 @@ bool saveFlag = false;
 // Values to use when executing from IDE
 std::string loadPath = "assets/octree.bin";
 std::string savePath = "assets/octree.bin";
-std::string modelPath = "assets/Interior/interior.obj";
+std::string modelPath = "assets/sponza/sponza.obj";
 uint8_t depth = 12;
 bool loadFlag = false;
 bool voxelizeFlag = !loadFlag;
@@ -59,7 +61,7 @@ void parseCommands(const int argc, char* argv[])
             {
                 depth = static_cast<uint8_t>(std::stoul(argv[i + 1]));
             }
-            catch (const std::exception& e)
+            catch (const std::exception&)
             {
                 Logger::print("Invalid depth value, using default value of " + std::to_string(depth), Logger::LevelBits::WARN);
             }

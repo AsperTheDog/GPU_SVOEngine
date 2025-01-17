@@ -159,6 +159,8 @@
     <ClInclude Include="src\Octree\octree_helper.hpp" />
     <ClInclude Include="src\Octree\voxelizer.hpp" />
     <ClInclude Include="src\sdl_window.hpp" />
+    <ClInclude Include="vendor\stb\stb_image.h" />
+    <ClInclude Include="vendor\tinyobjloader\tiny_obj_loader.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="GPU_SVOEngine.rc" />

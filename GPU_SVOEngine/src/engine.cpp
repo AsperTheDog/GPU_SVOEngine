@@ -5,7 +5,9 @@
 
 #include <imgui.h>
 #include <ranges>
+#include <numbers>
 
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
 
 #include "imgui_internal.h"
@@ -18,6 +20,9 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+
+#include "ext/vulkan_extension_management.hpp"
+#include "ext/vulkan_swapchain.hpp"
 
 // Push constant data for the shaders
 // The alignment rules for the GPU are specified here (https://registry.khronos.org/OpenGL/extensions/ARB/ARB_uniform_buffer_object.txt)
@@ -86,19 +91,22 @@ Engine::Engine(const uint32_t samplerImageCount, const uint8_t depth) : cam({ 0,
     m_transferQueuePos = selector.addQueue(transferQueueFamily, 1.0);
 
     // Logical Device
-    m_deviceID = VulkanContext::createDevice(gpu, selector, { VK_KHR_SWAPCHAIN_EXTENSION_NAME }, {});
+    VulkanDeviceExtensionManager extensions{};
+    extensions.addExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME, new VulkanSwapchainExtension(m_deviceID));
+    m_deviceID = VulkanContext::createDevice(gpu, selector, &extensions, {});
     VulkanDevice& device = VulkanContext::getDevice(m_deviceID);
 
     // Swapchain
-    m_swapchainID = device.createSwapchain(m_window.getSurface(), m_window.getSize().toExtent2D(), { VK_FORMAT_R8G8B8A8_SRGB, VK_COLORSPACE_SRGB_NONLINEAR_KHR });
-    const VulkanSwapchain& swapchain = device.getSwapchain(m_swapchainID);
+    VulkanSwapchainExtension* swapchainExt = VulkanSwapchainExtension::get(m_deviceID);
+    m_swapchainID = swapchainExt->createSwapchain(m_window.getSurface(), m_window.getSize().toExtent2D(), { VK_FORMAT_R8G8B8A8_SRGB, VK_COLORSPACE_SRGB_NONLINEAR_KHR });
+    const VulkanSwapchain& swapchain = swapchainExt->getSwapchain(m_swapchainID);
 
     // Command Buffers
     device.configureOneTimeQueue(m_transferQueuePos);
     m_graphicsCmdBufferID = device.createCommandBuffer(graphicsQueueFamily, 0, false);
 
     m_depth = depth;
-    m_voxelSize = std::sqrt(2.0f) * (1.0f / static_cast<float>(1 << m_depth)) / 2.0f;
+    m_voxelSize = std::numbers::sqrt2_v<float> * (1.0f / static_cast<float>(1 << m_depth)) / 2.0f;
     m_samplerImageCount = std::max(samplerImageCount, 1U);
 
     // Renderpass and pipelines
@@ -135,8 +143,7 @@ Engine::~Engine()
     m_window.shutdownImgui();
     ImGui::DestroyContext();
 
-    // Swapchain must be destroyed before the window, since the window destroys the surface
-    VulkanContext::getDevice(m_deviceID).freeSwapchain(m_swapchainID);
+    VulkanContext::freeDevice(m_deviceID);
     m_window.free();
     VulkanContext::free();
 }
@@ -320,15 +327,18 @@ void Engine::configureOctreeBuffer(Octree& octree, const float scale)
 void Engine::run()
 {
     VulkanDevice& device = VulkanContext::getDevice(m_deviceID);
+    VulkanSwapchainExtension* swapchainExt = VulkanSwapchainExtension::get(device);
+
     VulkanFence& inFlightFence = device.getFence(m_inFlightFenceID);
 
     const VulkanQueue graphicsQueue = device.getQueue(m_graphicsQueuePos);
     VulkanCommandBuffer& graphicsBuffer = device.getCommandBuffer(m_graphicsCmdBufferID, 0);
-
+        
     uint64_t frameCounter = 0;
 
     while (!m_window.shouldClose())
     {
+
         Logger::setRootContext("Frame " + std::to_string(frameCounter));
         m_window.pollEvents();
 
@@ -337,7 +347,8 @@ void Engine::run()
         inFlightFence.reset();
 
         // Acquire
-        const uint32_t nextImage = device.getSwapchain(m_swapchainID).acquireNextImage();
+        VulkanSwapchain& swapchain = swapchainExt->getSwapchain(m_swapchainID);
+        const uint32_t nextImage = swapchain.acquireNextImage();
 
         if (nextImage == UINT32_MAX)
         {
@@ -366,13 +377,13 @@ void Engine::run()
         recordCommandBuffer(m_framebuffers[nextImage], imguiDrawData);
 
         // Submit
-        graphicsBuffer.submit(graphicsQueue, { {device.getSwapchain(m_swapchainID).getImgSemaphore(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT} }, { m_renderFinishedSemaphoreID }, m_inFlightFenceID);
+        graphicsBuffer.submit(graphicsQueue, { {swapchain.getImgSemaphore(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT} }, { m_renderFinishedSemaphoreID }, m_inFlightFenceID);
 
         ImGui::UpdatePlatformWindows();
         ImGui::RenderPlatformWindowsDefault();
 
         // Present
-        device.getSwapchain(m_swapchainID).present(m_presentQueuePos, { m_renderFinishedSemaphoreID });
+        swapchain.present(m_presentQueuePos, {      });
 
         frameCounter++;
     }
@@ -382,8 +393,9 @@ void Engine::createRenderPass()
 {
     Logger::pushContext("Create RenderPass");
     VulkanRenderPassBuilder builder{};
-
-    const VkFormat format = VulkanContext::getDevice(m_deviceID).getSwapchain(m_swapchainID).getFormat().format;
+    
+    VulkanSwapchainExtension* swapchainExt = VulkanSwapchainExtension::get(m_deviceID);
+    const VkFormat format = swapchainExt->getSwapchain(m_swapchainID).getFormat().format;
 
     // We just have one color attachment, since the scene is raytraced we don't need depth data. The whole scene is rendered in one draw call
     // Maybe support for several draw calls could be added in the future, in which case we would need a depth attachment, but for now it's not necessary
@@ -513,9 +525,10 @@ void Engine::initImgui() const
         { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
         { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
     };
-    const uint32_t imguiPoolID = device.createDescriptorPool(pool_sizes, 1000U * pool_sizes.size(), VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT);
+    const uint32_t imguiPoolID = device.createDescriptorPool(pool_sizes, 1000U * static_cast<uint32_t>(pool_sizes.size()), VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT);
 
-    const VulkanSwapchain& swapchain = device.getSwapchain(m_swapchainID);
+    VulkanSwapchainExtension* swapchainExt = VulkanSwapchainExtension::get(device);
+    const VulkanSwapchain& swapchain = swapchainExt->getSwapchain(m_swapchainID);
 
     m_window.initImgui();
     ImGui_ImplVulkan_InitInfo init_info = {};
@@ -546,11 +559,12 @@ void Engine::setupInputEvents()
     // Rebuild swapchain resources when the window is resized
     m_window.getResizedSignal().connect([&](const VkExtent2D extent)
         {
-            VulkanContext::getDevice(m_deviceID).waitIdle();
             VulkanDevice& device = VulkanContext::getDevice(m_deviceID);
+            VulkanSwapchainExtension* swapchainExt = VulkanSwapchainExtension::get(device);
+            device.waitIdle();
 
-            m_swapchainID = device.createSwapchain(m_window.getSurface(), extent, device.getSwapchain(m_swapchainID).getFormat(), m_swapchainID);
-            const VulkanSwapchain& swapchain = device.getSwapchain(m_swapchainID);
+            m_swapchainID = swapchainExt->createSwapchain(m_window.getSurface(), extent, swapchainExt->getSwapchain(m_swapchainID).getFormat(), m_swapchainID);
+            const VulkanSwapchain& swapchain = swapchainExt->getSwapchain(m_swapchainID);
 
             Logger::pushContext("Swapchain resources rebuild");
             for (uint32_t i = 0; i < swapchain.getImageCount(); i++)
@@ -566,7 +580,8 @@ void Engine::setupInputEvents()
 void Engine::recordCommandBuffer(const uint32_t framebufferID, ImDrawData* main_draw_data)
 {
     Logger::pushContext("Command buffer recording");
-    const VkExtent2D& extent = VulkanContext::getDevice(m_deviceID).getSwapchain(m_swapchainID).getExtent();
+    VulkanSwapchainExtension* swapchainExt = VulkanSwapchainExtension::get(m_deviceID);
+    const VkExtent2D& extent = swapchainExt->getSwapchain(m_swapchainID).getExtent();
 
     std::vector<VkClearValue> clearValues{ 2 };
     clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };

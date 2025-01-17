@@ -1,5 +1,6 @@
 #include "camera.hpp"
 
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/transform.hpp>
 
 #include <SDL2/SDL_keycode.h>

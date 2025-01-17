@@ -399,3 +399,4 @@ FodyWeavers.xsd
 GPU_SVOEngine/imgui.ini
 /GPU_SVOEngine/assets/*
 !GPU_SVOEngine/assets/test_ico.*
+/.vscode

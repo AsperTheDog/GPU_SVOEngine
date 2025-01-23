@@ -63,7 +63,7 @@ void parseCommands(const int argc, char* argv[])
             }
             catch (const std::exception&)
             {
-                Logger::print("Invalid depth value, using default value of " + std::to_string(depth), Logger::LevelBits::WARN);
+                LOG_WARN("Invalid depth value, using default value of ", depth);
             }
             depthProvided = true;
         }
@@ -85,31 +85,31 @@ void parseCommands(const int argc, char* argv[])
     }
     if (loadFlag && (saveFlag || voxelizeFlag))
     {
-        Logger::print("Cannot load and generate at the same time, ignoring save and/or voxelize flags", Logger::LevelBits::WARN);
+        LOG_WARN("Cannot load and generate at the same time, ignoring save and/or voxelize flags");
         saveFlag = false;
         voxelizeFlag = false;
     }
     if (depthProvided && loadFlag)
     {
-        Logger::print("Depth provided but loading octree, ignoring depth", Logger::LevelBits::WARN);
+        LOG_WARN("Depth provided but loading octree, ignoring depth");
     }
     if (!voxelizeFlag && !loadFlag)
     {
-        Logger::print("No model provided and no octree to load, exiting", Logger::LevelBits::ERR);
+        LOG_ERR("No model provided and no octree to load, exiting");
         exit(EXIT_FAILURE);
     }
     if (saveFlag && !voxelizeFlag)
     {
-        Logger::print("No model provided, ignoring save flag", Logger::LevelBits::WARN);
+        LOG_WARN("No model provided, ignoring save flag");
         saveFlag = false;
     }
     if (!depthProvided && voxelizeFlag)
     {
-        Logger::print("No depth provided, using default value of " + std::to_string(depth), Logger::LevelBits::WARN);
+        LOG_WARN("No depth provided, using default value of ", depth);
     }
     if (voxelizeFlag && !saveFlag)
     {
-        Logger::print("No save path provided, octree will be lost on exit", Logger::LevelBits::WARN);
+        LOG_WARN("No save path provided, octree will be lost on exit");
     }
 }
 
@@ -173,7 +173,7 @@ int main(const int argc, char* argv[])
     }
     catch (const std::exception& e)
     {
-        Logger::print(e.what(), Logger::LevelBits::ERR);
+        LOG_ERR(e.what());
         return EXIT_FAILURE;
     }
 #endif

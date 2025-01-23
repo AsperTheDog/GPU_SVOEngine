@@ -106,11 +106,11 @@ void Octree::generate(const AABB root, const ProcessFunc func, void* processData
     const std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
     m_stats.constructionTime = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) / 1000.f;
 
-    Logger::print("Octree stats:\n", Logger::INFO);
-    Logger::print("  Nodes: " + std::to_string(getSize()), Logger::INFO);
-    Logger::print("  Voxel nodes: " + std::to_string(m_stats.voxels), Logger::INFO);
-    Logger::print("  Far pointers: " + std::to_string(m_stats.farPtrs), Logger::INFO);
-    Logger::print("  Construction time: " + std::to_string(m_stats.constructionTime) + "s", Logger::INFO);
+    LOG_DEBUG("Octree stats:");
+    LOG_DEBUG("  Nodes: ", getSize());
+    LOG_DEBUG("  Voxel nodes: ", m_stats.voxels);
+    LOG_DEBUG("  Far pointers: ", m_stats.farPtrs);
+    LOG_DEBUG("  Construction time: ", m_stats.constructionTime, "s");
     Logger::popContext();
 }
 
@@ -171,11 +171,11 @@ void Octree::generateParallel(const AABB rootShape, const ParallelProcessFunc fu
             childRefs[i].isLeaf = false;
             // we remove the root, since it will be at the beginning of the final octree
             children[i].m_data.resize(children[i].getSize() - 1);
-            Logger::print("(parallel) Finished processing child " + std::to_string(i), Logger::INFO);
+            LOG_INFO("(parallel) Finished processing child ", i);
         }
         Logger::setThreadSafe(false);
-        
-        Logger::print("(parallel) Merging octrees...", Logger::INFO);
+
+        LOG_INFO("(parallel) Merging octrees...");
 
         //Calculate total octree size
         size_t totalSize = 0;
@@ -242,7 +242,7 @@ void Octree::resolveRoot(const NodeRef& ref)
 {
     if (!ref.exists)
     {
-        Logger::print("Octree generation returned non-existent root. Resulting octree is empty or broken", Logger::WARN);
+        LOG_WARN("Octree generation returned non-existent root. Resulting octree is empty or broken");
         return;
     }
     if (ref.isLeaf)
@@ -350,7 +350,7 @@ NodeRef Octree::populateRec(const AABB nodeShape, const uint8_t currentDepth, vo
         childShape.center += childPositions[i] * childShape.halfSize;
         children[i] = populateRec(childShape, currentDepth + 1, processData, parallel, parallelIndex);
         if (currentDepth == 0 && !parallel)
-            Logger::print("Finished processing root child " + std::to_string(i), Logger::INFO);
+            LOG_INFO("Finished processing root child ", i);
 
         node.childMask.setBit(i, children[i].exists);
         node.leafMask.setBit(i, children[i].isLeaf);
@@ -460,7 +460,7 @@ void Octree::dump(const std::string_view filenameArg) const
     const std::string filename = filenameArg.empty() ? m_dumpFile : filenameArg.data();
     if (filename.empty())
     {
-        Logger::print("No filename provided for octree dumping", Logger::ERR);
+        LOG_ERR("No filename provided for octree dumping");
         return;
     }
     std::ofstream file(filename.data(), std::ios::binary);
@@ -508,7 +508,7 @@ void Octree::load(const std::string_view filename)
     {
         if (m_dumpFile.empty())
         {
-            Logger::print("No filename provided for octree loading", Logger::ERR);
+            LOG_ERR("No filename provided for octree loading");
             return;
         }
         load(m_dumpFile);

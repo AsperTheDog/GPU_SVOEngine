@@ -113,7 +113,7 @@
     </Link>
     <Lib>
       <AdditionalLibraryDirectories>$(VULKAN_SDK)\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>spirv-cross-cored.lib;spirv-cross-glsld.lib</AdditionalDependencies>
+      <AdditionalDependencies>spirv-cross-cored.lib;spirv-cross-glsld.lib;volkd.lib;shaderc_combinedd.lib</AdditionalDependencies>
     </Lib>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -135,7 +135,7 @@
     </Link>
     <Lib />
     <Lib>
-      <AdditionalDependencies>spirv-cross-core.lib;spirv-cross-glsl.lib</AdditionalDependencies>
+      <AdditionalDependencies>spirv-cross-core.lib;spirv-cross-glsl.lib;volk.lib;shaderc_combined.lib</AdditionalDependencies>
     </Lib>
     <Lib>
       <AdditionalLibraryDirectories>$(VULKAN_SDK)\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>

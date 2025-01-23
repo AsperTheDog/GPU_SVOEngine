@@ -11,6 +11,8 @@
 #include <glm/gtx/quaternion.hpp>
 
 #include "imgui_internal.h"
+
+#define IMGUI_IMPL_VULKAN_USE_VOLK
 #include "backends/imgui_impl_vulkan.h"
 
 #include "utils/logger.hpp"
@@ -444,7 +446,7 @@ uint32_t Engine::createGraphicsPipeline(const uint32_t samplerImageCount, const 
 
         m_octreeDescrSetLayout = device.createDescriptorSetLayout({ octreeBinding, matBinding, texBinding }, 0);
     }
-    if (m_pipelineLayoutID)
+    if (m_pipelineLayoutID == UINT32_MAX)
     {
         std::vector<VkPushConstantRange> pushConstants{ 1 };
         pushConstants[0] = { VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstantData) };
@@ -464,7 +466,7 @@ uint32_t Engine::createGraphicsPipeline(const uint32_t samplerImageCount, const 
     colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
     colorBlendAttachment.blendEnable = VK_FALSE;
 
-    VulkanPipelineBuilder builder{ &device };
+    VulkanPipelineBuilder builder{ m_deviceID };
 
     builder.setInputAssemblyState(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_FALSE);
     builder.setViewportState(1, 1);
@@ -738,7 +740,7 @@ void Engine::updatePipelines()
     }
     catch (const std::exception& e)
     {
-        Logger::print(std::string("Failed to reload shaders: ") + e.what(), Logger::ERR);
+        LOG_ERR("Failed to reload shaders: ", e.what());
     }
     
 }

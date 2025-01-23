@@ -2,7 +2,7 @@
 #include <SDL2/SDL_vulkan.h>
 #include <vector>
 #include <SDL2/SDL_keycode.h>
-#include <vulkan/vulkan_core.h>
+#include <Volk/volk.h>
 
 #include "utils/signal.hpp"
 
